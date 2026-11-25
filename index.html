@@ -105,6 +105,40 @@
   .res.ot{background:#dbe7fb;color:#1d4ed8}
   .res.bad{background:#fde2e1;color:var(--bad)}
   .calc{background:#f3f5f9;border-radius:9px;padding:10px;text-align:center;font-weight:700;margin-bottom:12px}
+  .lockbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding:9px 12px;border-radius:9px;background:#f3f5f9}
+  .lockbar.locked{background:#fde2e1;color:var(--bad);font-weight:600}
+  .lockbar.open{background:#fff4d6;color:var(--warn);font-weight:600}
+  .att.ro .chk,.att.ro .nm,.att.ro .res{cursor:default}
+  .rform{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .rform .full{grid-column:1/-1}
+  .rform label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+  input[type=month]{width:100%;padding:10px 8px;border:1px solid #cfd4dc;border-radius:9px;background:#fff}
+  #printArea{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;overflow-x:auto}
+  .rep h2{font-size:17px;text-align:center;margin:0 0 2px}
+  .rep .sub{text-align:center;color:#444;font-size:13px;margin-bottom:10px}
+  .rep h3{font-size:15px;margin:14px 0 6px;padding:5px 8px;background:#e6ebf2;border-radius:6px}
+  .rep table{width:100%;border-collapse:collapse;font-size:13px}
+  .rep th,.rep td{border:1px solid #9aa3b2;padding:5px 4px;text-align:center}
+  .rep th{background:#eef1f6}
+  .rep td.n{text-align:right}
+  .rep tr.grp td{background:#f3f5f9;font-weight:700;text-align:right}
+  .rep tr.tot td{background:#eef1f6;font-weight:700}
+  .rep td.abs{color:#999}
+  .rep td.sig{min-width:70px}
+  .rep .sign{display:flex;justify-content:space-around;margin-top:28px;font-size:14px}
+  .rep .sign div{border-top:1px solid #333;padding-top:4px;min-width:140px;text-align:center}
+  .rep tr.click{cursor:pointer}
+  @media print{
+    @page{size:A4 portrait;margin:10mm}
+    body{background:#fff}
+    header,nav,.fab,#rControls,#toast,#modalRoot{display:none!important}
+    main{padding:0;max-width:none}
+    section{display:none!important}
+    #tab-reports{display:block!important}
+    #printArea{border:0;padding:0;overflow:visible}
+    .rep table{font-size:11px}
+    .rep tr{page-break-inside:avoid}
+  }
   #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
     padding:9px 16px;border-radius:9px;font-size:14px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
   #toast.show{opacity:.92}
@@ -149,6 +183,7 @@
           <div><label>البناية</label><select id="defB"></select></div>
         </div>
         <p class="muted" style="margin:8px 0 0">هذي القيم تنطبق على أي عامل تأشّره حاضر. تقدر تعدّل لكل عامل بالضغط على اسمه.</p>
+        <div id="lockBar"></div>
         <div class="stats" id="dStats"></div>
         <div class="actions" style="margin-top:10px">
           <button class="btn sec sm" id="allPresent">تحضير الكل</button>
@@ -175,7 +210,24 @@
     </section>
 
     <section id="tab-reports" class="hidden">
-      <div class="soon">📊<br>الكشوفات<br>تجهز بالمرحلة 5</div>
+      <div class="card" id="rControls">
+        <div class="rform">
+          <div class="full"><label>نوع الكشف</label>
+            <select id="rType">
+              <option value="daily">كشف يومي</option>
+              <option value="monthly">ملخص شهري للعمال</option>
+              <option value="worker">كشف عامل (شهري)</option>
+              <option value="building">ملخص حسب البناية (شهري)</option>
+            </select></div>
+          <div id="rDateW"><label>اليوم</label><input type="date" id="rDate"></div>
+          <div id="rMonthW" class="hidden"><label>الشهر</label><input type="month" id="rMonth"></div>
+          <div id="rWorkerW" class="hidden"><label>العامل</label><select id="rWorker"></select></div>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" id="rPrint">🖨️ طباعة / PDF</button>
+        </div>
+      </div>
+      <div id="printArea"></div>
     </section>
 
     <section id="tab-settings" class="hidden">
@@ -189,6 +241,14 @@
         <p class="muted">بعد التغيير، كل الأجهزة الثانية تطلب كلمة السر الجديدة.</p>
       </div>
       <div class="card">
+        <h2>قفل الأيام</h2>
+        <div class="field"><select id="lockMode">
+          <option value="manual">يدوي — بزر "قفل اليوم"</option>
+          <option value="auto">تلقائي — كل يوم ينقفل بعد منتصف الليل</option>
+        </select></div>
+        <p class="muted">اليوم المقفول للعرض والطباعة بس. فتحه يحتاج كلمة السر، وينفتح على هذا الجهاز بس، ويرجع ينقفل وحده بعد 10 دقايق. تغيير النوع يحتاج كلمة السر.</p>
+      </div>
+      <div class="card">
         <h2>البنايات</h2>
         <div id="bList"></div>
         <p class="muted">تقدر تغيّر اسم البناية. التغيير يظهر بكل الأجهزة.</p>
@@ -197,7 +257,7 @@
         <h2>هذا الجهاز</h2>
         <button class="btn bad" id="logoutBtn">تسجيل خروج</button>
       </div>
-      <p class="muted" style="text-align:center">المرحلة 3 — الدوام اليومي</p>
+      <p class="muted" style="text-align:center">الإصدار 1.0</p>
     </section>
   </main>
 
@@ -253,6 +313,7 @@ let workers = [];  // {id,name,tradeId,active}
 let serverHash = null;
 const DEFAULT_BUILDINGS=[{id:"b1",name:"بناية 1"},{id:"b2",name:"بناية 2"},{id:"b3",name:"بناية 3"}];
 let buildings = DEFAULT_BUILDINGS;
+let autoLock = false;
 let listenersOn = false;
 
 /* ---------- أدوات ---------- */
@@ -291,6 +352,8 @@ onAuthStateChanged(auth, async user=>{
     serverHash = snap.exists() ? (snap.data().passHash||null) : null;
     const bl = snap.exists() && snap.data().buildings;
     buildings = Array.isArray(bl)&&bl.length ? bl : DEFAULT_BUILDINGS;
+    autoLock = !!(snap.exists() && snap.data().autoLock);
+    $("lockMode").value = autoLock?"auto":"manual";
     renderBuildings(); if(typeof renderAttend==="function") renderAttend();
     const local = localStorage.getItem(LS_KEY);
     if(serverHash && local===serverHash){ enterApp(); }
@@ -359,11 +422,11 @@ function enterApp(){
   onSnapshot(collection(db,"trades"), s=>{
     trades = s.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
-    renderWorkers(); refreshOpenTradesModal(); renderAttend();
+    renderWorkers(); refreshOpenTradesModal(); renderAttend(); renderReport();
   });
   onSnapshot(collection(db,"workers"), s=>{
     workers = s.docs.map(d=>({id:d.id,...d.data()}));
-    renderWorkers(); refreshOpenTradesModal(); renderAttend();
+    renderWorkers(); refreshOpenTradesModal(); renderAttend(); fillWorkerSelect(); renderReport();
   });
   openDay(todayStr());
 }
@@ -437,11 +500,13 @@ $("dDate").onchange=()=>{ if($("dDate").value) openDay($("dDate").value); };
 function saveDefs(){
   const def={in:$("defIn").value, out:$("defOut").value, b:$("defB").value};
   localStorage.setItem("dob_defs",JSON.stringify(def));
-  setDoc(doc(db,"days",curDate),{def},{merge:true});
+  if(!canEdit()){ renderAttend(); return; }
+  setDoc(doc(db,"days",curDate),{def,date:curDate},{merge:true});
 }
 ["defIn","defOut","defB"].forEach(id=>$(id).addEventListener("change",saveDefs));
 
 function setEntry(wid,val){ // val=null يعني غائب
+  if(!canEdit()){ toast("اليوم مقفول"); return; }
   dayData.entries[wid]=val; renderAttend();
   setDoc(doc(db,"days",curDate),{entries:{[wid]:val}, date:curDate},{merge:true});
 }
@@ -450,6 +515,14 @@ function present(e){ return e && e.in; }
 function renderAttend(){
   if(!curDate || !$("attList")) return;
   const D=curDefs();
+  const ed=canEdit(), lk=isLocked();
+  ["defIn","defOut","defB","allPresent","applyDefs"].forEach(id=>$(id).disabled=!ed);
+  if(!lk) $("lockBar").innerHTML=`<div class="lockbar"><span>🔓 اليوم مفتوح</span><button class="btn sec sm" id="lockBtn">قفل اليوم</button></div>`;
+  else if(ed) $("lockBar").innerHTML=`<div class="lockbar open"><span>🔓 مفتوح مؤقتاً على هذا الجهاز (${minsLeft()} د)</span><button class="btn sec sm" id="relockBtn">قفل</button></div>`;
+  else $("lockBar").innerHTML=`<div class="lockbar locked"><span>🔒 اليوم مقفول</span><button class="btn sec sm" id="unlockBtn">فتح</button></div>`;
+  const lb=$("lockBtn"); if(lb) lb.onclick=lockDay;
+  const ub=$("unlockBtn"); if(ub) ub.onclick=unlockDay;
+  const rb=$("relockBtn"); if(rb) rb.onclick=()=>{ setOverride(curDate,0); renderAttend(); };
   if(document.activeElement!==$("defIn")) $("defIn").value=D.in;
   if(document.activeElement!==$("defOut")) $("defOut").value=D.out;
   if(document.activeElement!==$("defB")) $("defB").value=D.b;
@@ -483,12 +556,13 @@ function renderAttend(){
         sub=`<small>${esc(e.in)} – ${esc(e.out||"؟")} · ${esc(bName(e.b))}</small>`;
         res=`<span class="res ${r.cls}" data-edit="${w.id}">${r.t}</span>`;
       }
-      html+=`<div class="att ${on?"on":""}"><div class="chk" data-tog="${w.id}">${on?"✓":""}</div>
+      html+=`<div class="att ${on?"on":""} ${ed?"":"ro"}"><div class="chk" data-tog="${w.id}">${on?"✓":""}</div>
         <div class="nm" data-edit="${w.id}">${esc(w.name)}${w.active===false?' <span class="tag">متوقف</span>':""}${sub}</div>${res}</div>`;
     });
     html+=`</div></div>`;
   });
   $("attList").innerHTML=html;
+  if(!ed) return;
   $("attList").querySelectorAll("[data-tog]").forEach(el=>el.onclick=()=>{
     const id=el.dataset.tog, e=E[id];
     if(present(e)) setEntry(id,null);
@@ -498,6 +572,7 @@ function renderAttend(){
 }
 
 $("allPresent").onclick=()=>{
+  if(!canEdit()) return;
   const E=dayData.entries||{}, D=curDefs();
   const todo=workers.filter(w=>w.active!==false && !present(E[w.id]));
   if(!todo.length){ toast("الكل حاضر"); return; }
@@ -507,6 +582,7 @@ $("allPresent").onclick=()=>{
   setDoc(doc(db,"days",curDate),{entries:upd,date:curDate},{merge:true});
 };
 $("applyDefs").onclick=()=>{
+  if(!canEdit()) return;
   const E=dayData.entries||{}, D=curDefs();
   const ids=Object.keys(E).filter(id=>present(E[id]));
   if(!ids.length){ toast("ماكو حاضرين"); return; }
@@ -546,6 +622,203 @@ function openEntry(wid){
   const ab=m.querySelector("#eAbs"); if(ab) ab.onclick=()=>{ setEntry(wid,null); closeModal(); };
 }
 
+/* ---------- قفل الأيام ---------- */
+const UNLOCK_MS=10*60*1000;
+function overrides(){ try{ return JSON.parse(localStorage.getItem("dob_unlock"))||{}; }catch(e){ return {}; } }
+function setOverride(d,until){ const o=overrides(); if(until) o[d]=until; else delete o[d]; localStorage.setItem("dob_unlock",JSON.stringify(o)); }
+function isLocked(d=curDate,data=dayData){ return !!(data&&data.locked) || (autoLock && d<todayStr()); }
+function canEdit(d=curDate){ return !isLocked(d) || (overrides()[d]||0)>Date.now(); }
+function minsLeft(){ return Math.max(1,Math.ceil(((overrides()[curDate]||0)-Date.now())/60000)); }
+setInterval(()=>{ if(curDate && isLocked() && overrides()[curDate]) renderAttend(); },30000);
+
+function askPassword(title){
+  return new Promise(res=>{
+    const m=openModal(`<h3>${esc(title)}</h3>
+      <div class="field"><input type="password" id="apw" placeholder="كلمة السر"></div>
+      <div class="err" id="apErr"></div>
+      <div class="actions"><button class="btn" id="apOk">تأكيد</button><button class="btn sec" id="apNo">إلغاء</button></div>`);
+    const inp=m.querySelector("#apw"); setTimeout(()=>inp.focus(),50);
+    m.querySelector("#apNo").onclick=()=>{ closeModal(); res(false); };
+    const ok=async()=>{ if(await sha256(inp.value)===serverHash){ closeModal(); res(true); } else m.querySelector("#apErr").textContent="كلمة السر غلط"; };
+    m.querySelector("#apOk").onclick=ok;
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter") ok(); });
+  });
+}
+function lockDay(){
+  if(!confirm("قفل هذا اليوم؟ بعد القفل يصير للعرض والطباعة بس.")) return;
+  dayData.locked=true; setOverride(curDate,0); renderAttend();
+  setDoc(doc(db,"days",curDate),{locked:true,date:curDate},{merge:true});
+}
+async function unlockDay(){
+  if(!await askPassword("فتح اليوم لمدة 10 دقايق")) return;
+  setOverride(curDate,Date.now()+UNLOCK_MS); renderAttend(); toast("انفتح لمدة 10 دقايق");
+}
+$("lockMode").onchange=async ()=>{
+  const want=$("lockMode").value==="auto";
+  $("lockMode").value=autoLock?"auto":"manual";
+  if(want===autoLock) return;
+  if(!await askPassword("تغيير نوع القفل")) return;
+  autoLock=want; $("lockMode").value=want?"auto":"manual";
+  setDoc(settingsRef,{autoLock:want},{merge:true});
+  renderAttend(); toast("تم");
+};
+
+/* ---------- الكشوفات ---------- */
+const MONTHS=["كانون الثاني","شباط","آذار","نيسان","أيار","حزيران","تموز","آب","أيلول","تشرين الأول","تشرين الثاني","كانون الأول"];
+function monthName(ym){ const [y,m]=ym.split("-").map(Number); return MONTHS[m-1]+" "+y; }
+function fmtDate(d){ const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; }
+function monthDays(ym){ const [y,m]=ym.split("-").map(Number); const n=new Date(y,m,0).getDate(); return [...Array(n)].map((_,i)=>`${ym}-${String(i+1).padStart(2,"0")}`); }
+let rUnsub=null, rDays={}, rKey="";
+
+function rParams(){
+  const t=$("rType").value;
+  $("rDateW").classList.toggle("hidden",t!=="daily");
+  $("rMonthW").classList.toggle("hidden",t==="daily");
+  $("rWorkerW").classList.toggle("hidden",t!=="worker");
+  return {t, date:$("rDate").value, ym:$("rMonth").value, wid:$("rWorker").value};
+}
+function fillWorkerSelect(){
+  const v=$("rWorker").value;
+  const ws=[...workers].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+  $("rWorker").innerHTML=ws.map(w=>`<option value="${w.id}">${esc(w.name)}${w.active===false?" (متوقف)":""}</option>`).join("");
+  if(v && ws.some(w=>w.id===v)) $("rWorker").value=v;
+}
+function rSubscribe(){
+  const P=rParams();
+  const key=P.t==="daily"?"d:"+P.date:"m:"+P.ym;
+  if(key===rKey) { renderReport(); return; }
+  rKey=key; rDays={}; if(rUnsub) rUnsub();
+  $("printArea").innerHTML=`<div class="empty">جارِ التحميل...</div>`;
+  if(P.t==="daily"){
+    if(!P.date) return;
+    rUnsub=onSnapshot(doc(db,"days",P.date),snap=>{ rDays={}; if(snap.exists()) rDays[P.date]=snap.data(); renderReport(); });
+  } else {
+    if(!P.ym) return;
+    const q=FB.query(collection(db,"days"),FB.where("date",">=",P.ym+"-01"),FB.where("date","<=",P.ym+"-31"));
+    rUnsub=onSnapshot(q,snap=>{ rDays={}; snap.docs.forEach(d=>rDays[d.id]=d.data()); renderReport(); });
+  }
+}
+["rType","rDate","rMonth"].forEach(id=>$(id).addEventListener("change",rSubscribe));
+$("rWorker").addEventListener("change",renderReport);
+$("rPrint").onclick=()=>{
+  const P=rParams();
+  const title = P.t==="daily" ? "دوام "+P.date : "دوام "+P.ym;
+  if(window.AndroidBridge && AndroidBridge.printSized) AndroidBridge.printSized(title,"A4P");
+  else window.print();
+};
+
+function sumEntries(list){ // list of entries
+  let days=0,hrs=0,ot=0,pres=0;
+  list.forEach(e=>{ if(!present(e)) return; const c=calc(e); if(c.err) return; pres++; days+=c.day; hrs+=c.hrs; ot+=c.ot; });
+  return {days,hrs,ot,pres};
+}
+function groupByTrade(ws){
+  const order=[...trades.map(t=>t.id),"__none"], g={};
+  ws.forEach(w=>{ const k=trades.some(t=>t.id===w.tradeId)?w.tradeId:"__none"; (g[k] ||= []).push(w); });
+  return order.filter(k=>g[k]).map(k=>({name:k==="__none"?"بدون مهنة":tradeName(k), ws:g[k].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"))}));
+}
+const HEAD=`<h2>دوام عمال البنايات</h2>`;
+
+function renderReport(){
+  if($("tab-reports").classList.contains("hidden")) return;
+  const P=rParams(), A=$("printArea");
+  if(P.t==="daily") return A.innerHTML=repDaily(P.date);
+  if(P.t==="monthly") { A.innerHTML=repMonthly(P.ym); A.querySelectorAll("tr[data-w]").forEach(tr=>tr.onclick=()=>{ $("rType").value="worker"; rParams(); $("rWorker").value=tr.dataset.w; renderReport(); scrollTo(0,0); }); return; }
+  if(P.t==="worker") return A.innerHTML=repWorker(P.ym,P.wid);
+  if(P.t==="building") return A.innerHTML=repBuilding(P.ym);
+}
+
+function repDaily(d){
+  const day=rDays[d]||{}, E=day.entries||{};
+  const ws=workers.filter(w=>w.active!==false || present(E[w.id]));
+  const dn=DAYS[new Date(d+"T12:00:00").getDay()];
+  let h=`<div class="rep">${HEAD}<div class="sub">الكشف اليومي — ${dn} ${fmtDate(d)}${day.locked?" — 🔒 مقفول":""}</div>
+    <table><tr><th>#</th><th>الاسم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>البناية</th><th>التوقيع</th></tr>`;
+  let i=0;
+  groupByTrade(ws).forEach(g=>{
+    h+=`<tr class="grp"><td colspan="8">${esc(g.name)} (${g.ws.filter(w=>present(E[w.id])).length}/${g.ws.length})</td></tr>`;
+    g.ws.forEach(w=>{
+      const e=E[w.id]; i++;
+      if(!present(e)){ h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td class="abs" colspan="5">غائب</td><td class="sig"></td></tr>`; return; }
+      const c=calc(e), r=resText(c);
+      h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${r.t}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
+    });
+  });
+  const S=sumEntries(ws.map(w=>E[w.id]));
+  h+=`<tr class="tot"><td colspan="8">الحاضرين ${S.pres} من ${ws.length} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
+  // حسب البناية لهذا اليوم
+  h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>عدد العمال</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
+  buildings.forEach(b=>{ const l=ws.map(w=>E[w.id]).filter(e=>present(e)&&e.b===b.id); const s2=sumEntries(l);
+    h+=`<tr><td>${esc(b.name)}</td><td>${s2.pres}</td><td>${s2.days}</td><td>${fmtH(s2.hrs)}</td><td>${fmtH(s2.ot)}</td></tr>`; });
+  h+=`</table><div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
+  return h;
+}
+
+function monthEntries(ym,wid){ return monthDays(ym).map(d=>({d,e:(rDays[d]?.entries||{})[wid]})); }
+
+function repMonthly(ym){
+  const ws=workers.filter(w=>w.active!==false || monthEntries(ym,w.id).some(x=>present(x.e)));
+  let h=`<div class="rep">${HEAD}<div class="sub">الملخص الشهري — ${monthName(ym)}</div>
+    <table><tr><th>#</th><th>الاسم</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th><th>التوقيع</th></tr>`;
+  let i=0, T={pres:0,days:0,hrs:0,ot:0};
+  groupByTrade(ws).forEach(g=>{
+    h+=`<tr class="grp"><td colspan="7">${esc(g.name)}</td></tr>`;
+    g.ws.forEach(w=>{ i++; const S=sumEntries(monthEntries(ym,w.id).map(x=>x.e));
+      T.pres+=S.pres; T.days+=S.days; T.hrs+=S.hrs; T.ot+=S.ot;
+      h+=`<tr class="click" data-w="${w.id}"><td>${i}</td><td class="n">${esc(w.name)}</td><td>${S.pres}</td><td>${S.days}</td><td>${fmtH(S.hrs)}</td><td>${fmtH(S.ot)}</td><td class="sig"></td></tr>`; });
+  });
+  h+=`<tr class="tot"><td colspan="2">المجموع</td><td>${T.pres}</td><td>${T.days}</td><td>${fmtH(T.hrs)}</td><td>${fmtH(T.ot)}</td><td></td></tr></table>
+    <p class="muted" style="margin-top:6px">اضغط على أي عامل حتى تشوف كشفه يوم بيوم.</p>
+    <div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
+  return h;
+}
+
+function repWorker(ym,wid){
+  const w=workers.find(x=>x.id===wid); if(!w) return `<div class="empty">اختر عامل</div>`;
+  const rows=monthEntries(ym,wid);
+  let h=`<div class="rep">${HEAD}<div class="sub">كشف العامل: <b>${esc(w.name)}</b> — ${esc(tradeName(w.tradeId))} — ${monthName(ym)}</div>
+    <table><tr><th>التاريخ</th><th>اليوم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>البناية</th></tr>`;
+  rows.forEach(({d,e})=>{
+    const dn=DAYS[new Date(d+"T12:00:00").getDay()];
+    if(!present(e)){ h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td class="abs" colspan="5">—</td></tr>`; return; }
+    const c=calc(e), r=resText(c);
+    h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${r.t}</td><td>${esc(bName(e.b))}</td></tr>`;
+  });
+  const S=sumEntries(rows.map(x=>x.e));
+  h+=`<tr class="tot"><td colspan="7">أيام الحضور ${S.pres} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
+  h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
+  buildings.forEach(b=>{ const s2=sumEntries(rows.map(x=>x.e).filter(e=>present(e)&&e.b===b.id));
+    h+=`<tr><td>${esc(b.name)}</td><td>${s2.pres}</td><td>${s2.days}</td><td>${fmtH(s2.hrs)}</td><td>${fmtH(s2.ot)}</td></tr>`; });
+  h+=`</table><div class="sign"><div>توقيع العامل</div><div>توقيع المشرف</div></div></div>`;
+  return h;
+}
+
+function repBuilding(ym){
+  let h=`<div class="rep">${HEAD}<div class="sub">ملخص حسب البناية — ${monthName(ym)}</div>`;
+  // جدول إجمالي
+  h+=`<table><tr><th>البناية</th><th>عدد العمال</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
+  const per={};
+  buildings.forEach(b=>{
+    const ws=workers.filter(w=>monthEntries(ym,w.id).some(x=>present(x.e)&&x.e.b===b.id));
+    const all=[]; ws.forEach(w=>monthEntries(ym,w.id).forEach(x=>{ if(present(x.e)&&x.e.b===b.id) all.push(x.e); }));
+    per[b.id]={ws}; const S=sumEntries(all);
+    h+=`<tr><td>${esc(b.name)}</td><td>${ws.length}</td><td>${S.pres}</td><td>${S.days}</td><td>${fmtH(S.hrs)}</td><td>${fmtH(S.ot)}</td></tr>`;
+  });
+  h+=`</table>`;
+  buildings.forEach(b=>{
+    const ws=per[b.id].ws; if(!ws.length) return;
+    h+=`<h3>${esc(b.name)}</h3><table><tr><th>#</th><th>الاسم</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
+    let i=0;
+    groupByTrade(ws).forEach(g=>{
+      h+=`<tr class="grp"><td colspan="6">${esc(g.name)}</td></tr>`;
+      g.ws.forEach(w=>{ i++; const S=sumEntries(monthEntries(ym,w.id).map(x=>x.e).filter(e=>present(e)&&e.b===b.id));
+        h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${S.pres}</td><td>${S.days}</td><td>${fmtH(S.hrs)}</td><td>${fmtH(S.ot)}</td></tr>`; });
+    });
+    h+=`</table>`;
+  });
+  return h+`</div>`;
+}
+
 /* ---------- التبويبات ---------- */
 const TITLES={attend:"الدوام اليومي",workers:"العمال",reports:"الكشوفات",settings:"الإعدادات"};
 document.querySelectorAll("nav.tabs button").forEach(b=>{
@@ -553,6 +826,11 @@ document.querySelectorAll("nav.tabs button").forEach(b=>{
     document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.toggle("on",x===b));
     Object.keys(TITLES).forEach(k=>$("tab-"+k).classList.toggle("hidden",k!==b.dataset.tab));
     $("title").textContent=TITLES[b.dataset.tab];
+    if(b.dataset.tab==="reports"){
+      if(!$("rDate").value) $("rDate").value=curDate||todayStr();
+      if(!$("rMonth").value) $("rMonth").value=(curDate||todayStr()).slice(0,7);
+      fillWorkerSelect(); rSubscribe();
+    }
   };
 });
 
