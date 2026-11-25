@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<meta name="theme-color" content="#1f3a5f">
+<meta name="theme-color" content="#2b3a67">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
 <title>دوام عمال البنايات</title>
 <style>
   :root{
     --bg:#f2f4f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb;
-    --pri:#1f3a5f; --pri2:#2d5590; --ok:#1e8e4e; --warn:#b45309; --bad:#b42318;
+    --pri:#2b3a67; --pri2:#2d5590; --ok:#1e8e4e; --warn:#b45309; --bad:#b42318;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -161,14 +163,10 @@
 <div id="modalRoot"></div>
 <div id="toast"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
+<script src="fb.js"></script>
+<script>
+/* app-marker: dob_attend_v1 */
+const FB = window.FB;
 const firebaseConfig = {
   apiKey: "AIzaSyA5v4u5v0pyr9DqUzF8LA5WZ4UT4NBVhwQ",
   authDomain: "duration-of-buildings.firebaseapp.com",
@@ -177,13 +175,25 @@ const firebaseConfig = {
   messagingSenderId: "54696715728",
   appId: "1:54696715728:web:a695bf1b438dadfd5e85d5"
 };
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+const app = FB.initializeApp(firebaseConfig);
+let auth;
+try{ auth = FB.initializeAuth(app,{persistence:[FB.indexedDBLocalPersistence,FB.browserLocalPersistence]}); }
+catch(e){ auth = FB.initializeAuth(app,{persistence:FB.inMemoryPersistence}); }
 // كاش محلي: التطبيق يشتغل بدون إنترنت ويرفع التغييرات لما يرجع الاتصال
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-});
+let db;
+try{ db = FB.initializeFirestore(app,{localCache:FB.persistentLocalCache({tabManager:FB.persistentMultipleTabManager()})}); }
+catch(e){ db = FB.initializeFirestore(app,{localCache:FB.memoryLocalCache()}); }
+const { collection, doc, onSnapshot, serverTimestamp, signInAnonymously, onAuthStateChanged } = FB;
+// الكتابة عن طريق writeBatch (تشتغل بدون إنترنت أيضاً)
+function setDoc(ref,data,opt){ const b=FB.writeBatch(db); b.set(ref,data,opt||{}); return b.commit(); }
+function updateDoc(ref,data){ const b=FB.writeBatch(db); b.update(ref,data); return b.commit(); }
+function deleteDoc(ref){ const b=FB.writeBatch(db); b.delete(ref); return b.commit(); }
+function addDoc(col,data){ const r=doc(col); setDoc(r,data); return r; }
+
+// تحديث تلقائي داخل التطبيق: لما تنزل نسخة جديدة
+window.__updateReady = function(){
+  if(confirm("توجد نسخة جديدة من التطبيق. تحديث الآن؟")) location.reload();
+};
 
 const $ = id => document.getElementById(id);
 const LS_KEY = "dob_pass_hash";
@@ -255,7 +265,7 @@ $("loginBtn").onclick = async ()=>{
   const h = await sha256(p1);
   if(firstSetup){
     if(p1!==p2){ $("loginErr").textContent="كلمتا السر غير متطابقتين"; return; }
-    await setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
+    setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
   } else if(h!==serverHash){
     $("loginErr").textContent="كلمة السر غلط"; return;
   }
@@ -277,7 +287,7 @@ $("changePwBtn").onclick = async ()=>{
   if(n1!==n2){ err.textContent="الجديدتان غير متطابقتين"; return; }
   const h=await sha256(n1);
   localStorage.setItem(LS_KEY,h);
-  await setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
+  setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
   $("curPw").value=$("newPw1").value=$("newPw2").value="";
   toast("تم تغيير كلمة السر");
 };
