@@ -241,6 +241,11 @@
         <p class="muted">بعد التغيير، كل الأجهزة الثانية تطلب كلمة السر الجديدة.</p>
       </div>
       <div class="card">
+        <h2>اسم المشروع</h2>
+        <div class="row"><input type="text" id="projName" class="grow" placeholder="مثلاً: مشروع البنايات الثلاث"><button class="btn" id="projSave">حفظ</button></div>
+        <p class="muted">يطلع بأعلى كل الكشوفات المطبوعة.</p>
+      </div>
+      <div class="card">
         <h2>قفل الأيام</h2>
         <div class="field"><select id="lockMode">
           <option value="manual">يدوي — بزر "قفل اليوم"</option>
@@ -314,6 +319,7 @@ let serverHash = null;
 const DEFAULT_BUILDINGS=[{id:"b1",name:"بناية 1"},{id:"b2",name:"بناية 2"},{id:"b3",name:"بناية 3"}];
 let buildings = DEFAULT_BUILDINGS;
 let autoLock = false;
+let projectName = "";
 let listenersOn = false;
 
 /* ---------- أدوات ---------- */
@@ -353,6 +359,9 @@ onAuthStateChanged(auth, async user=>{
     const bl = snap.exists() && snap.data().buildings;
     buildings = Array.isArray(bl)&&bl.length ? bl : DEFAULT_BUILDINGS;
     autoLock = !!(snap.exists() && snap.data().autoLock);
+    projectName = (snap.exists() && snap.data().projectName) || "";
+    if(document.activeElement!==$("projName")) $("projName").value=projectName;
+    if(typeof renderReport==="function") renderReport();
     $("lockMode").value = autoLock?"auto":"manual";
     renderBuildings(); if(typeof renderAttend==="function") renderAttend();
     const local = localStorage.getItem(LS_KEY);
@@ -653,6 +662,10 @@ async function unlockDay(){
   if(!await askPassword("فتح اليوم لمدة 10 دقايق")) return;
   setOverride(curDate,Date.now()+UNLOCK_MS); renderAttend(); toast("انفتح لمدة 10 دقايق");
 }
+$("projSave").onclick=()=>{
+  const n=norm($("projName").value);
+  projectName=n; setDoc(settingsRef,{projectName:n},{merge:true}); toast("تم الحفظ"); renderReport();
+};
 $("lockMode").onchange=async ()=>{
   const want=$("lockMode").value==="auto";
   $("lockMode").value=autoLock?"auto":"manual";
@@ -717,7 +730,9 @@ function groupByTrade(ws){
   ws.forEach(w=>{ const k=trades.some(t=>t.id===w.tradeId)?w.tradeId:"__none"; (g[k] ||= []).push(w); });
   return order.filter(k=>g[k]).map(k=>({name:k==="__none"?"بدون مهنة":tradeName(k), ws:g[k].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"))}));
 }
-const HEAD=`<h2>دوام عمال البنايات</h2>`;
+function HEADF(){ return projectName ? `<h2>${esc(projectName)}</h2><div class="sub" style="margin-bottom:2px">دوام العمال</div>` : `<h2>دوام عمال البنايات</h2>`; }
+function repRes(c){ if(c.err) return c.err==='وقت ناقص'?c.err:c.err; return c.day? 'دوام' : fmtH(c.hrs)+' ساعة'; }
+function otCell(c){ return !c.err && c.ot>0 ? fmtH(c.ot) : ''; }
 
 function renderReport(){
   if($("tab-reports").classList.contains("hidden")) return;
@@ -732,20 +747,20 @@ function repDaily(d){
   const day=rDays[d]||{}, E=day.entries||{};
   const ws=workers.filter(w=>w.active!==false || present(E[w.id]));
   const dn=DAYS[new Date(d+"T12:00:00").getDay()];
-  let h=`<div class="rep">${HEAD}<div class="sub">الكشف اليومي — ${dn} ${fmtDate(d)}${day.locked?" — 🔒 مقفول":""}</div>
-    <table><tr><th>#</th><th>الاسم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>البناية</th><th>التوقيع</th></tr>`;
+  let h=`<div class="rep">${HEADF()}<div class="sub">الكشف اليومي — ${dn} ${fmtDate(d)}${day.locked?" — 🔒 مقفول":""}</div>
+    <table><tr><th>#</th><th>الاسم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>أوفر تايم</th><th>البناية</th><th>التوقيع</th></tr>`;
   let i=0;
   groupByTrade(ws).forEach(g=>{
-    h+=`<tr class="grp"><td colspan="8">${esc(g.name)} (${g.ws.filter(w=>present(E[w.id])).length}/${g.ws.length})</td></tr>`;
+    h+=`<tr class="grp"><td colspan="9">${esc(g.name)} (${g.ws.filter(w=>present(E[w.id])).length}/${g.ws.length})</td></tr>`;
     g.ws.forEach(w=>{
       const e=E[w.id]; i++;
-      if(!present(e)){ h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td class="abs" colspan="5">غائب</td><td class="sig"></td></tr>`; return; }
-      const c=calc(e), r=resText(c);
-      h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${r.t}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
+      if(!present(e)){ h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td class="abs" colspan="6">غائب</td><td class="sig"></td></tr>`; return; }
+      const c=calc(e);
+      h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
     });
   });
   const S=sumEntries(ws.map(w=>E[w.id]));
-  h+=`<tr class="tot"><td colspan="8">الحاضرين ${S.pres} من ${ws.length} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
+  h+=`<tr class="tot"><td colspan="9">الحاضرين ${S.pres} من ${ws.length} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
   // حسب البناية لهذا اليوم
   h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>عدد العمال</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
   buildings.forEach(b=>{ const l=ws.map(w=>E[w.id]).filter(e=>present(e)&&e.b===b.id); const s2=sumEntries(l);
@@ -758,7 +773,7 @@ function monthEntries(ym,wid){ return monthDays(ym).map(d=>({d,e:(rDays[d]?.entr
 
 function repMonthly(ym){
   const ws=workers.filter(w=>w.active!==false || monthEntries(ym,w.id).some(x=>present(x.e)));
-  let h=`<div class="rep">${HEAD}<div class="sub">الملخص الشهري — ${monthName(ym)}</div>
+  let h=`<div class="rep">${HEADF()}<div class="sub">الملخص الشهري — ${monthName(ym)}</div>
     <table><tr><th>#</th><th>الاسم</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th><th>التوقيع</th></tr>`;
   let i=0, T={pres:0,days:0,hrs:0,ot:0};
   groupByTrade(ws).forEach(g=>{
@@ -776,16 +791,16 @@ function repMonthly(ym){
 function repWorker(ym,wid){
   const w=workers.find(x=>x.id===wid); if(!w) return `<div class="empty">اختر عامل</div>`;
   const rows=monthEntries(ym,wid);
-  let h=`<div class="rep">${HEAD}<div class="sub">كشف العامل: <b>${esc(w.name)}</b> — ${esc(tradeName(w.tradeId))} — ${monthName(ym)}</div>
-    <table><tr><th>التاريخ</th><th>اليوم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>البناية</th></tr>`;
+  let h=`<div class="rep">${HEADF()}<div class="sub">كشف العامل: <b>${esc(w.name)}</b> — ${esc(tradeName(w.tradeId))} — ${monthName(ym)}</div>
+    <table><tr><th>التاريخ</th><th>اليوم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>أوفر تايم</th><th>البناية</th></tr>`;
   rows.forEach(({d,e})=>{
     const dn=DAYS[new Date(d+"T12:00:00").getDay()];
-    if(!present(e)){ h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td class="abs" colspan="5">—</td></tr>`; return; }
-    const c=calc(e), r=resText(c);
-    h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${r.t}</td><td>${esc(bName(e.b))}</td></tr>`;
+    if(!present(e)){ h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td class="abs" colspan="6">—</td></tr>`; return; }
+    const c=calc(e);
+    h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td></tr>`;
   });
   const S=sumEntries(rows.map(x=>x.e));
-  h+=`<tr class="tot"><td colspan="7">أيام الحضور ${S.pres} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
+  h+=`<tr class="tot"><td colspan="8">أيام الحضور ${S.pres} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
   h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
   buildings.forEach(b=>{ const s2=sumEntries(rows.map(x=>x.e).filter(e=>present(e)&&e.b===b.id));
     h+=`<tr><td>${esc(b.name)}</td><td>${s2.pres}</td><td>${s2.days}</td><td>${fmtH(s2.hrs)}</td><td>${fmtH(s2.ot)}</td></tr>`; });
@@ -794,7 +809,7 @@ function repWorker(ym,wid){
 }
 
 function repBuilding(ym){
-  let h=`<div class="rep">${HEAD}<div class="sub">ملخص حسب البناية — ${monthName(ym)}</div>`;
+  let h=`<div class="rep">${HEADF()}<div class="sub">ملخص حسب البناية — ${monthName(ym)}</div>`;
   // جدول إجمالي
   h+=`<table><tr><th>البناية</th><th>عدد العمال</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
   const per={};
