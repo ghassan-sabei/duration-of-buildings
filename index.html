@@ -337,6 +337,15 @@
         <p class="muted">يطلع بأعلى كل الكشوفات المطبوعة.</p>
       </div>
       <div class="card">
+        <h2>🍽️ سعر وجبة المقاولين</h2>
+        <div class="row">
+          <input type="text" inputmode="decimal" id="mealPrice" class="grow" placeholder="سعر الوجبة">
+          <select id="mealCur" style="width:auto"><option value="IQD">دينار</option><option value="USD">دولار</option></select>
+          <button class="btn" id="mealSave">حفظ</button>
+        </div>
+        <p class="muted">السعر ينحفظ ويا كل يوم تسجل بيه وجبات. إذا غيّرت السعر، الأيام القديمة تبقى بسعرها القديم.</p>
+      </div>
+      <div class="card">
         <h2>قفل الأيام</h2>
         <div class="field"><select id="lockMode">
           <option value="manual">يدوي — بزر "قفل اليوم"</option>
@@ -418,6 +427,7 @@ const DEFAULT_BUILDINGS=[{id:"b1",name:"بناية 1"},{id:"b2",name:"بناية
 let buildings = DEFAULT_BUILDINGS;
 let autoLock = false;
 let projectName = "";
+let mealPrice = 0, mealCur = "IQD";
 let listenersOn = false;
 
 /* ---------- أدوات ---------- */
@@ -500,6 +510,10 @@ function startProject(){
     buildings = Array.isArray(bl)&&bl.length ? bl : DEFAULT_BUILDINGS;
     autoLock = !!(snap.exists() && snap.data().autoLock);
     projectName = (snap.exists() && snap.data().projectName) || "";
+    mealPrice = +((snap.exists() && snap.data().mealPrice) || 0);
+    mealCur = (snap.exists() && snap.data().mealCur) || "IQD";
+    if(document.activeElement!==$("mealPrice")) $("mealPrice").value = mealPrice || "";
+    $("mealCur").value = mealCur;
     if(document.activeElement!==$("projName")) $("projName").value=projectName;
     if(typeof renderReport==="function") renderReport();
     $("lockMode").value = autoLock?"auto":"manual";
@@ -674,7 +688,11 @@ async function deletePerson(colName,dayCol,field,id,name){
         if(field==="entries" ? k===id : (v&&v.cid===id)){ changed=true; continue; }
         nm[k]=v;
       }
-      if(changed) ops.push(["upd",dref(dayCol,d.id),{[field]:nm}]);
+      const upd={};
+      if(changed) upd[field]=nm;
+      const meals=(d.data()||{}).meals;
+      if(dayCol==="cdays" && meals && id in meals){ const mm={...meals}; delete mm[id]; upd.meals=mm; }
+      if(Object.keys(upd).length) ops.push(["upd",dref(dayCol,d.id),upd]);
     });
     ops.push(["del",dref(colName,id)]);
     for(let i=0;i<ops.length;i+=400){
@@ -1064,11 +1082,12 @@ function renderContr(){
   $("cLockBar").querySelector("[data-lk]").onclick=e=>{ const a=e.target.dataset.lk; if(a==="lock") lockDay(); else if(a==="unlock") unlockDay(); else { setOverride(curDate,0); renderAttend(); renderContr(); } };
 
   const R=cdayData.rows||{};
-  const list=contractors.filter(c=>c.active!==false || rowsOf(cdayData,c.id).length)
+  const list=contractors.filter(c=>c.active!==false || rowsOf(cdayData,c.id).length || mealOf(cdayData,c.id))
     .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
   const presentN=list.filter(c=>rowsOf(cdayData,c.id).length).length;
   const totalW=Object.values(R).filter(r=>r&&r.cid).reduce((s,r)=>s+(+r.n||0),0);
-  $("cStats").innerHTML=`<div class="stat"><b>${presentN}/${list.length}</b><span>مقاول حاضر</span></div><div class="stat"><b>${totalW}</b><span>مجموع عمالهم</span></div>`;
+  const mealsN=list.reduce((s,c)=>s+(mealOf(cdayData,c.id)?.n||0),0);
+  $("cStats").innerHTML=`<div class="stat"><b>${presentN}/${list.length}</b><span>مقاول حاضر</span></div><div class="stat"><b>${totalW}</b><span>مجموع عمالهم</span></div><div class="stat"><b>${mealsN}</b><span>وجبات</span></div>`;
 
   if(!contractors.length){ $("cList").innerHTML=`<div class="empty">ماكو مقاولين بعد.<br>اضغط <b>قائمة المقاولين</b> وضيفهم.</div>`; return; }
   $("cList").innerHTML=list.map(c=>{
@@ -1076,10 +1095,50 @@ function renderContr(){
     return `<div class="cc ${on?"on":""}"><div class="cc-h"><span class="dot"></span><span class="nm">${esc(c.name)}${c.active===false?' <span class="tag">متوقف</span>':""}</span>
       ${on?`<span class="muted">${n} عامل</span>`:`<span class="muted">غائب</span>`}
       ${ed?`<button class="btn ok sm" data-add="${c.id}">+ ${on?"مكان":"حاضر"}</button>`:""}</div>`+
-      rows.map(r=>`<div class="crow" data-row="${r.id}"><span class="loc">${esc(locText(r))}<small>${fmtT(r.in)} – ${fmtT(r.out)}${hrsOf(r)!=null?` · ${fmtH(hrsOf(r))} ساعة`:""}</small></span><span class="cnt">${+r.n||0} عامل</span></div>`).join("")+`</div>`;
+      rows.map(r=>`<div class="crow" data-row="${r.id}"><span class="loc">${esc(locText(r))}<small>${fmtT(r.in)} – ${fmtT(r.out)}${hrsOf(r)!=null?` · ${fmtH(hrsOf(r))} ساعة`:""}</small></span><span class="cnt">${+r.n||0} عامل</span></div>`).join("")+
+      (()=>{ const ml=mealOf(cdayData,c.id); return `<div class="crow" data-meal="${c.id}"><span class="loc">🍽️ الوجبات${ml?`<small>${ml.n} × ${fmtMoney(ml.p,ml.c)} = ${fmtMoney(ml.n*ml.p,ml.c)}</small>`:`<small>اضغط حتى تسجل</small>`}</span><span class="cnt" style="background:#fde7d3;color:var(--warn)">${ml?ml.n:0} وجبة</span></div>`; })()+`</div>`;
   }).join("");
   $("cList").querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>openCRow(b.dataset.add,null));
+  $("cList").querySelectorAll("[data-meal]").forEach(el=>el.onclick=()=>openMeals(el.dataset.meal));
   $("cList").querySelectorAll("[data-row]").forEach(el=>el.onclick=()=>{ if(!canEdit()){ toast("اليوم مقفول"); return; } const r=R[el.dataset.row]; openCRow(r.cid,{id:el.dataset.row,...r}); });
+}
+
+/* ---------- وجبات المقاولين ---------- */
+const CUR={IQD:"دينار",USD:"دولار"};
+function toNum(v){ return parseFloat(String(v??"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[٬,]/g,"").replace("٫",".")); }
+function fmtMoney(n,c){ const r=Math.round(n*100)/100; return r.toLocaleString("en-US",{maximumFractionDigits:2})+" "+(CUR[c]||CUR.IQD); }
+function mealOf(data,cid){ const m=data&&data.meals&&data.meals[cid]; return (m&&+m.n>0)?{n:+m.n,p:+m.p||0,c:m.c||"IQD"}:null; }
+function sumMoney(list){ // list of {n,p,c} → {IQD:x,USD:y}
+  const o={}; list.forEach(m=>{ if(m) o[m.c]=(o[m.c]||0)+m.n*m.p; }); return o; }
+function moneyText(o){ const k=Object.keys(o).filter(c=>o[c]); return k.length?k.map(c=>fmtMoney(o[c],c)).join(" + "):"0"; }
+$("mealSave").onclick=()=>{
+  const v=toNum($("mealPrice").value);
+  if(isNaN(v)||v<0){ toast("السعر غلط"); return; }
+  mealPrice=v; mealCur=$("mealCur").value;
+  setDoc(settingsRef,{mealPrice:v,mealCur},{merge:true}); toast("تم حفظ سعر الوجبة");
+};
+function openMeals(cid){
+  if(!canEdit()){ toast("اليوم مقفول"); return; }
+  const cur=mealOf(cdayData,cid);
+  const price=cur?cur.p:mealPrice, c=cur?cur.c:mealCur;
+  const m=openModal(`<h3>🍽️ وجبات ${esc(cName(cid))}</h3>
+    <div class="field"><label>عدد الوجبات لهذا اليوم</label><input type="text" inputmode="numeric" id="mlN" value="${cur?cur.n:""}" placeholder="0"></div>
+    <div class="calc" id="mlCalc"></div>
+    ${price?"":`<p class="err">ما محدد سعر الوجبة. حدده من الإعدادات.</p>`}
+    <div class="actions"><button class="btn ok" id="mlSave">حفظ</button><button class="btn sec" id="mlCancel">إلغاء</button></div>`);
+  const inp=m.querySelector("#mlN");
+  const upd=()=>{ const n=toNum(inp.value)||0; m.querySelector("#mlCalc").textContent=`${n} × ${fmtMoney(price,c)} = ${fmtMoney(n*price,c)}`; };
+  inp.oninput=upd; upd(); setTimeout(()=>inp.focus(),50);
+  m.querySelector("#mlCancel").onclick=closeModal;
+  m.querySelector("#mlSave").onclick=()=>{
+    const n=Math.round(toNum(inp.value)||0);
+    if(n<0){ toast("العدد غلط"); return; }
+    const val = n>0 ? {n,p:price,c} : null;
+    (cdayData.meals ||= {})[cid]=val; renderContr();
+    setDoc(dref("cdays",curDate),{meals:{[cid]:val},date:curDate},{merge:true});
+    closeModal();
+  };
+  inp.addEventListener("keydown",e=>{ if(e.key==="Enter") m.querySelector("#mlSave").click(); });
 }
 
 function setCRow(id,val){
@@ -1377,36 +1436,41 @@ function renderReport(){
 function allRows(data){ return Object.entries((data&&data.rows)||{}).filter(([k,r])=>r&&r.cid).map(([k,r])=>({id:k,...r})); }
 function sortRows(rows){ return rows.sort((a,b)=>(cName(a.cid)).localeCompare(cName(b.cid),"ar")||String(a.b).localeCompare(String(b.b))||String(a.floor).localeCompare(String(b.floor),"ar",{numeric:true})||String(a.flat).localeCompare(String(b.flat),"ar",{numeric:true})); }
 function repCDaily(d){
-  const rows=sortRows(allRows(rDays[d]));
+  const day=rDays[d]||{}, rows=allRows(day);
+  const ids=[...new Set([...rows.map(r=>r.cid), ...Object.keys(day.meals||{}).filter(c=>mealOf(day,c))])].sort((a,b)=>cName(a).localeCompare(cName(b),"ar"));
   const dn=DAYS[new Date(d+"T12:00:00").getDay()];
   let h=`<div class="rep">${HEADF()}<div class="sub">كشف المقاولين اليومي — ${dn} ${fmtDate(d)}</div>
-    <table><tr><th>#</th><th>المقاول</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th><th>التوقيع</th></tr>`;
-  let i=0, prev=null, tot=0;
-  rows.forEach(r=>{
-    const first=r.cid!==prev; prev=r.cid; if(first) i++; tot+=(+r.n||0);
-    const span=first?rows.filter(x=>x.cid===r.cid).length:0;
-    h+=`<tr>${first?`<td rowspan="${span}">${i}</td><td class="n" rowspan="${span}">${esc(cName(r.cid))}</td>`:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td>${first?`<td class="sig" rowspan="${span}"></td>`:""}</tr>`;
+    <table><tr><th>#</th><th>المقاول</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th><th>الوجبات</th><th>التوقيع</th></tr>`;
+  let tot=0, nPres=0, nMeals=0; const ml=[];
+  ids.forEach((cid,i)=>{
+    const rs=sortRows(rows.filter(r=>r.cid===cid)), m=mealOf(day,cid); if(m){ nMeals+=m.n; ml.push(m); }
+    if(rs.length) nPres++;
+    const span=Math.max(1,rs.length), head=`<td rowspan="${span}">${i+1}</td><td class="n" rowspan="${span}">${esc(cName(cid))}</td>`, tail=`<td rowspan="${span}">${m?m.n:""}</td><td class="sig" rowspan="${span}"></td>`;
+    if(!rs.length){ h+=`<tr>${head}<td class="abs" colspan="7">غائب</td>${tail}</tr>`; return; }
+    rs.forEach((r,j)=>{ tot+=(+r.n||0);
+      h+=`<tr>${j===0?head:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td>${j===0?tail:""}</tr>`; });
   });
-  if(!rows.length) h+=`<tr><td colspan="10" class="abs">لا يوجد مقاولين حاضرين بهذا اليوم</td></tr>`;
-  h+=`<tr class="tot"><td colspan="10">عدد المقاولين الحاضرين ${i} · مجموع العمال ${tot}</td></tr></table>`;
+  if(!ids.length) h+=`<tr><td colspan="11" class="abs">لا يوجد مقاولين بهذا اليوم</td></tr>`;
+  h+=`<tr class="tot"><td colspan="11">المقاولين الحاضرين ${nPres} · مجموع العمال ${tot} · الوجبات ${nMeals} · مبلغ الوجبات ${moneyText(sumMoney(ml))}</td></tr></table>`;
   h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>عدد المقاولين</th><th>مجموع العمال</th></tr>`;
   buildings.forEach(b=>{ const l=rows.filter(r=>r.b===b.id); h+=`<tr><td>${esc(b.name)}</td><td>${new Set(l.map(r=>r.cid)).size}</td><td>${l.reduce((s,r)=>s+(+r.n||0),0)}</td></tr>`; });
   return h+`</table><div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
 }
 function repCSummary(ym){
   const days=monthDays(ym), stat={};
-  days.forEach(d=>allRows(rDays[d]).forEach(r=>{
-    const S=(stat[r.cid] ||= {days:new Set(),w:0,b:{}});
-    S.days.add(d); S.w+=(+r.n||0); S.b[r.b]=(S.b[r.b]||0)+(+r.n||0);
-  }));
+  const S0=id=>(stat[id] ||= {days:new Set(),w:0,b:{},meals:0,ml:[]});
+  days.forEach(d=>{
+    allRows(rDays[d]).forEach(r=>{ const S=S0(r.cid); S.days.add(d); S.w+=(+r.n||0); S.b[r.b]=(S.b[r.b]||0)+(+r.n||0); });
+    Object.keys((rDays[d]&&rDays[d].meals)||{}).forEach(cid=>{ const m=mealOf(rDays[d],cid); if(m){ const S=S0(cid); S.meals+=m.n; S.ml.push(m); } });
+  });
   const ids=Object.keys(stat).sort((a,b)=>cName(a).localeCompare(cName(b),"ar"));
   let h=`<div class="rep">${HEADF()}<div class="sub">ملخص المقاولين — ${monthName(ym)}</div>
-    <table><tr><th>#</th><th>المقاول</th><th>أيام الحضور</th>${buildings.map(b=>`<th>عمال ${esc(b.name)}</th>`).join("")}<th>مجموع العمال</th><th>التوقيع</th></tr>`;
-  let T={d:0,w:0,b:{}};
-  ids.forEach((id,i)=>{ const S=stat[id]; T.d+=S.days.size; T.w+=S.w; buildings.forEach(b=>T.b[b.id]=(T.b[b.id]||0)+(S.b[b.id]||0));
-    h+=`<tr class="click" data-c="${id}"><td>${i+1}</td><td class="n">${esc(cName(id))}</td><td>${S.days.size}</td>${buildings.map(b=>`<td>${S.b[b.id]||0}</td>`).join("")}<td>${S.w}</td><td class="sig"></td></tr>`; });
-  if(!ids.length) h+=`<tr><td colspan="${5+buildings.length}" class="abs">لا يوجد دوام مقاولين بهذه الفترة</td></tr>`;
-  h+=`<tr class="tot"><td colspan="2">المجموع</td><td>${T.d}</td>${buildings.map(b=>`<td>${T.b[b.id]||0}</td>`).join("")}<td>${T.w}</td><td></td></tr></table>
+    <table><tr><th>#</th><th>المقاول</th><th>أيام الحضور</th>${buildings.map(b=>`<th>عمال ${esc(b.name)}</th>`).join("")}<th>مجموع العمال</th><th>الوجبات</th><th>مبلغ الوجبات</th><th>التوقيع</th></tr>`;
+  let T={d:0,w:0,b:{},meals:0,ml:[]};
+  ids.forEach((id,i)=>{ const S=stat[id]; T.d+=S.days.size; T.w+=S.w; T.meals+=S.meals; T.ml.push(...S.ml); buildings.forEach(b=>T.b[b.id]=(T.b[b.id]||0)+(S.b[b.id]||0));
+    h+=`<tr class="click" data-c="${id}"><td>${i+1}</td><td class="n">${esc(cName(id))}</td><td>${S.days.size}</td>${buildings.map(b=>`<td>${S.b[b.id]||0}</td>`).join("")}<td>${S.w}</td><td>${S.meals}</td><td>${moneyText(sumMoney(S.ml))}</td><td class="sig"></td></tr>`; });
+  if(!ids.length) h+=`<tr><td colspan="${7+buildings.length}" class="abs">لا يوجد دوام مقاولين بهذه الفترة</td></tr>`;
+  h+=`<tr class="tot"><td colspan="2">المجموع</td><td>${T.d}</td>${buildings.map(b=>`<td>${T.b[b.id]||0}</td>`).join("")}<td>${T.w}</td><td>${T.meals}</td><td>${moneyText(sumMoney(T.ml))}</td><td></td></tr></table>
     <p class="muted" style="margin-top:6px">"مجموع العمال" = مجموع عدد العمال بكل الأيام (عامل × يوم). اضغط على أي مقاول حتى تشوف كشفه.</p>
     <div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
   return h;
@@ -1414,16 +1478,22 @@ function repCSummary(ym){
 function repCContr(ym,cid){
   const c=contractors.find(x=>x.id===cid); if(!c) return `<div class="empty">اختر مقاول</div>`;
   let h=`<div class="rep">${HEADF()}<div class="sub">كشف المقاول: <b>${esc(c.name)}</b> — ${monthName(ym)}</div>
-    <table><tr><th>التاريخ</th><th>اليوم</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th></tr>`;
-  let nd=0, tw=0;
+    <table><tr><th>التاريخ</th><th>اليوم</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th><th>الوجبات</th><th>سعر الوجبة</th><th>المبلغ</th></tr>`;
+  let nd=0, tw=0, nm=0; const ml=[];
   monthDays(ym).forEach(d=>{
-    const rows=sortRows(rowsOf(rDays[d],cid)); if(!rows.length) return; nd++;
-    const dn=DAYS[new Date(d+"T12:00:00").getDay()];
+    const rows=sortRows(rowsOf(rDays[d],cid)), m=mealOf(rDays[d],cid);
+    if(!rows.length && !m) return;
+    if(rows.length) nd++;
+    if(m){ nm+=m.n; ml.push(m); }
+    const dn=DAYS[new Date(d+"T12:00:00").getDay()], span=Math.max(1,rows.length);
+    const head=`<td rowspan="${span}">${fmtDate(d)}</td><td rowspan="${span}">${dn}</td>`;
+    const tail=`<td rowspan="${span}">${m?m.n:""}</td><td rowspan="${span}">${m?fmtMoney(m.p,m.c):""}</td><td rowspan="${span}">${m?fmtMoney(m.n*m.p,m.c):""}</td>`;
+    if(!rows.length){ h+=`<tr>${head}<td class="abs" colspan="7">غائب</td>${tail}</tr>`; return; }
     rows.forEach((r,j)=>{ tw+=(+r.n||0);
-      h+=`<tr>${j===0?`<td rowspan="${rows.length}">${fmtDate(d)}</td><td rowspan="${rows.length}">${dn}</td>`:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td></tr>`; });
+      h+=`<tr>${j===0?head:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td>${j===0?tail:""}</tr>`; });
   });
-  if(!nd) h+=`<tr><td colspan="9" class="abs">لا يوجد دوام بهذه الفترة</td></tr>`;
-  h+=`<tr class="tot"><td colspan="9">أيام الحضور ${nd} · مجموع العمال ${tw}</td></tr></table>
+  if(!nd && !nm) h+=`<tr><td colspan="12" class="abs">لا يوجد دوام بهذه الفترة</td></tr>`;
+  h+=`<tr class="tot"><td colspan="12">أيام الحضور ${nd} · مجموع العمال ${tw} · الوجبات ${nm} · مبلغ الوجبات على المقاول ${moneyText(sumMoney(ml))}</td></tr></table>
     <div class="sign"><div>توقيع المقاول</div><div>توقيع المشرف</div></div></div>`;
   return h;
 }
