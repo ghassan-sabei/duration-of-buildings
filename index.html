@@ -356,7 +356,8 @@
       <div class="card">
         <h2>البنايات</h2>
         <div id="bList"></div>
-        <p class="muted">تقدر تغيّر اسم البناية. التغيير يظهر بكل الأجهزة.</p>
+        <div class="row" style="margin-top:10px"><input type="text" id="bNew" class="grow" placeholder="اسم بناية جديدة"><button class="btn ok" id="bAdd">إضافة</button></div>
+        <p class="muted">تقدر تضيف بنايات وتغيّر أسماءها. البناية المسجّل عليها دوام ما تنحذف، تقدر تغيّر اسمها بس. التغيير يظهر بكل الأجهزة.</p>
       </div>
       <div class="card">
         <h2>هذا الجهاز</h2>
@@ -792,15 +793,44 @@ function bName(id){ return buildings.find(b=>b.id===id)?.name || "—"; }
 function renderBuildings(){
   const box=$("bList"); if(!box) return;
   box.innerHTML=`<div class="list" style="border-top:1px solid var(--line);border-radius:10px">`+
-    buildings.map(b=>`<div class="item" style="cursor:default"><span>${esc(b.name)}</span><button class="btn sec sm" data-b="${b.id}">تعديل</button></div>`).join("")+`</div>`;
+    buildings.map(b=>`<div class="item" style="cursor:default"><span>${esc(b.name)}</span><span class="row"><button class="btn sec sm" data-b="${b.id}">تعديل</button>${buildings.length>1?`<button class="btn sec sm" data-bdel="${b.id}">🗑️</button>`:""}</span></div>`).join("")+`</div>`;
   box.querySelectorAll("[data-b]").forEach(btn=>btn.onclick=()=>{
     const b=buildings.find(x=>x.id===btn.dataset.b);
     const nn=norm(prompt("الاسم الجديد للبناية:",b.name)||"");
     if(!nn||nn===b.name) return;
+    if(buildings.some(x=>x.id!==b.id&&norm(x.name)===nn)){ toast("الاسم موجود"); return; }
     const list=buildings.map(x=>x.id===b.id?{id:x.id,name:nn}:x);
     setDoc(settingsRef,{buildings:list},{merge:true});
   });
+  box.querySelectorAll("[data-bdel]").forEach(btn=>btn.onclick=()=>deleteBuilding(btn.dataset.bdel));
   const sel=$("defB"); if(sel){ const v=sel.value; sel.innerHTML=buildings.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join(""); if(v) sel.value=v; }
+}
+
+function addBuilding(){
+  const nn=norm($("bNew").value); if(!nn) return;
+  if(buildings.some(x=>norm(x.name)===nn)){ toast("البناية موجودة"); return; }
+  const list=[...buildings,{id:"b"+Date.now().toString(36),name:nn}];
+  buildings=list; renderBuildings();
+  setDoc(settingsRef,{buildings:list},{merge:true});
+  $("bNew").value=""; toast("تمت إضافة "+nn);
+}
+$("bAdd").onclick=addBuilding;
+$("bNew").addEventListener("keydown",e=>{ if(e.key==="Enter") addBuilding(); });
+async function deleteBuilding(id){
+  const b=buildings.find(x=>x.id===id); if(!b) return;
+  if(!confirm(`حذف ${b.name}؟`)) return;
+  busy(true,"جارِ الفحص...");
+  try{
+    // ما تنحذف إذا عليها دوام عمال أو مقاولين
+    const [d1,d2]=await Promise.all([withNet(FB.getDocsFromServer(col("days"))),withNet(FB.getDocsFromServer(col("cdays")))]);
+    const used=d1.docs.some(d=>Object.values(d.data().entries||{}).some(e=>e&&e.b===id)||(d.data().def||{}).b===id&&Object.keys(d.data().entries||{}).length)
+      || d2.docs.some(d=>Object.values(d.data().rows||{}).some(r=>r&&r.b===id));
+    busy(false);
+    if(used){ alert(`${b.name} عليها دوام مسجّل، ما تنحذف حتى ما تخرب الكشوفات.\nتقدر تغيّر اسمها بدل الحذف.`); return; }
+    const list=buildings.filter(x=>x.id!==id);
+    buildings=list; renderBuildings();
+    setDoc(settingsRef,{buildings:list},{merge:true}); toast("تم الحذف");
+  }catch(e){ busy(false); alert("الحذف يحتاج إنترنت حتى يتأكد إن البناية ما عليها دوام."); }
 }
 
 /* ---------- الوقت بنظام 12 ساعة ---------- */
