@@ -80,6 +80,31 @@
   .empty{text-align:center;color:var(--muted);padding:28px 10px}
   .soon{text-align:center;color:var(--muted);padding:40px 16px;line-height:1.8}
   details summary{cursor:pointer;padding:8px 2px;color:var(--muted)}
+  .datebar{display:flex;align-items:center;gap:6px}
+  .datebar input{flex:1;text-align:center;font-weight:700}
+  .datebar .btn{padding:10px 14px;font-size:18px}
+  .daylabel{text-align:center;color:var(--muted);font-size:13px;margin-top:6px}
+  .defs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+  .defs select{padding:10px 6px}
+  .defs label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+  input[type=time],input[type=date]{width:100%;padding:10px 8px;border:1px solid #cfd4dc;border-radius:9px;background:#fff}
+  .stats{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .stat{flex:1;min-width:70px;background:#f3f5f9;border-radius:9px;padding:7px;text-align:center}
+  .stat b{display:block;font-size:18px}
+  .stat span{font-size:12px;color:var(--muted)}
+  .att{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+  .att:first-child{border-top:0}
+  .chk{width:34px;height:34px;flex:0 0 34px;border-radius:9px;border:2px solid #cfd4dc;background:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;cursor:pointer}
+  .att.on .chk{background:var(--ok);border-color:var(--ok)}
+  .att .nm{flex:1;min-width:0;cursor:pointer}
+  .att .nm small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .res{font-size:13px;padding:3px 8px;border-radius:8px;white-space:nowrap;cursor:pointer}
+  .res.full{background:#dcf3e5;color:var(--ok)}
+  .res.part{background:#fde7d3;color:var(--warn)}
+  .res.ot{background:#dbe7fb;color:#1d4ed8}
+  .res.bad{background:#fde2e1;color:var(--bad)}
+  .calc{background:#f3f5f9;border-radius:9px;padding:10px;text-align:center;font-weight:700;margin-bottom:12px}
   #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
     padding:9px 16px;border-radius:9px;font-size:14px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
   #toast.show{opacity:.92}
@@ -105,16 +130,35 @@
 <!-- التطبيق -->
 <div id="appView" class="hidden">
   <header>
-    <h1 id="title">العمال</h1>
+    <h1 id="title">الدوام اليومي</h1>
     <span id="netState">متصل</span>
   </header>
 
   <main>
-    <section id="tab-attend" class="hidden">
-      <div class="soon">📋<br>الدوام اليومي<br>يجهز بالمرحلة 3</div>
+    <section id="tab-attend">
+      <div class="card">
+        <div class="datebar">
+          <button class="btn sec" id="dPrev">›</button>
+          <input type="date" id="dDate">
+          <button class="btn sec" id="dNext">‹</button>
+        </div>
+        <div class="daylabel" id="dLabel"></div>
+        <div class="defs">
+          <div><label>دخول</label><input type="time" id="defIn"></div>
+          <div><label>طلعة</label><input type="time" id="defOut"></div>
+          <div><label>البناية</label><select id="defB"></select></div>
+        </div>
+        <p class="muted" style="margin:8px 0 0">هذي القيم تنطبق على أي عامل تأشّره حاضر. تقدر تعدّل لكل عامل بالضغط على اسمه.</p>
+        <div class="stats" id="dStats"></div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn sec sm" id="allPresent">تحضير الكل</button>
+          <button class="btn sec sm" id="applyDefs">تطبيق الوقت على الحاضرين</button>
+        </div>
+      </div>
+      <div id="attList"></div>
     </section>
 
-    <section id="tab-workers">
+    <section id="tab-workers" class="hidden">
       <div class="card">
         <div class="row">
           <input type="text" id="search" class="grow" placeholder="بحث عن عامل...">
@@ -145,16 +189,21 @@
         <p class="muted">بعد التغيير، كل الأجهزة الثانية تطلب كلمة السر الجديدة.</p>
       </div>
       <div class="card">
+        <h2>البنايات</h2>
+        <div id="bList"></div>
+        <p class="muted">تقدر تغيّر اسم البناية. التغيير يظهر بكل الأجهزة.</p>
+      </div>
+      <div class="card">
         <h2>هذا الجهاز</h2>
         <button class="btn bad" id="logoutBtn">تسجيل خروج</button>
       </div>
-      <p class="muted" style="text-align:center">المرحلة 2 — العمال والمهن</p>
+      <p class="muted" style="text-align:center">المرحلة 3 — الدوام اليومي</p>
     </section>
   </main>
 
   <nav class="tabs">
-    <button data-tab="attend"><span class="ic">📋</span>الدوام</button>
-    <button data-tab="workers" class="on"><span class="ic">👷</span>العمال</button>
+    <button data-tab="attend" class="on"><span class="ic">📋</span>الدوام</button>
+    <button data-tab="workers"><span class="ic">👷</span>العمال</button>
     <button data-tab="reports"><span class="ic">📊</span>الكشوفات</button>
     <button data-tab="settings"><span class="ic">⚙️</span>الإعدادات</button>
   </nav>
@@ -202,6 +251,8 @@ const SALT = "duration-of-buildings::";
 let trades = [];   // {id,name}
 let workers = [];  // {id,name,tradeId,active}
 let serverHash = null;
+const DEFAULT_BUILDINGS=[{id:"b1",name:"بناية 1"},{id:"b2",name:"بناية 2"},{id:"b3",name:"بناية 3"}];
+let buildings = DEFAULT_BUILDINGS;
 let listenersOn = false;
 
 /* ---------- أدوات ---------- */
@@ -238,6 +289,9 @@ onAuthStateChanged(auth, async user=>{
   // راقب كلمة السر بالسيرفر: إذا تغيرت، هذا الجهاز يطلبها من جديد
   onSnapshot(settingsRef, snap=>{
     serverHash = snap.exists() ? (snap.data().passHash||null) : null;
+    const bl = snap.exists() && snap.data().buildings;
+    buildings = Array.isArray(bl)&&bl.length ? bl : DEFAULT_BUILDINGS;
+    renderBuildings(); if(typeof renderAttend==="function") renderAttend();
     const local = localStorage.getItem(LS_KEY);
     if(serverHash && local===serverHash){ enterApp(); }
     else if(!serverHash && snap.metadata.fromCache && !navigator.onLine){
@@ -305,12 +359,191 @@ function enterApp(){
   onSnapshot(collection(db,"trades"), s=>{
     trades = s.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
-    renderWorkers(); refreshOpenTradesModal();
+    renderWorkers(); refreshOpenTradesModal(); renderAttend();
   });
   onSnapshot(collection(db,"workers"), s=>{
     workers = s.docs.map(d=>({id:d.id,...d.data()}));
-    renderWorkers(); refreshOpenTradesModal();
+    renderWorkers(); refreshOpenTradesModal(); renderAttend();
   });
+  openDay(todayStr());
+}
+
+/* ---------- البنايات ---------- */
+function bName(id){ return buildings.find(b=>b.id===id)?.name || "—"; }
+function renderBuildings(){
+  const box=$("bList"); if(!box) return;
+  box.innerHTML=`<div class="list" style="border-top:1px solid var(--line);border-radius:10px">`+
+    buildings.map(b=>`<div class="item" style="cursor:default"><span>${esc(b.name)}</span><button class="btn sec sm" data-b="${b.id}">تعديل</button></div>`).join("")+`</div>`;
+  box.querySelectorAll("[data-b]").forEach(btn=>btn.onclick=()=>{
+    const b=buildings.find(x=>x.id===btn.dataset.b);
+    const nn=norm(prompt("الاسم الجديد للبناية:",b.name)||"");
+    if(!nn||nn===b.name) return;
+    const list=buildings.map(x=>x.id===b.id?{id:x.id,name:nn}:x);
+    setDoc(settingsRef,{buildings:list},{merge:true});
+  });
+  const sel=$("defB"); if(sel){ const v=sel.value; sel.innerHTML=buildings.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join(""); if(v) sel.value=v; }
+}
+
+/* ---------- حساب الدوام ---------- */
+// من الدخول للطلعة مباشرة: أقل من 9 = ساعات، 9 إلى 9.5 = يوم، أكثر من 9.5 = يوم + أوفر تايم
+const FULL_MIN=9*60, DAY_MAX=9.5*60;
+function toMin(t){ if(!t||!/^\d\d:\d\d$/.test(t)) return null; const [h,m]=t.split(":").map(Number); return h*60+m; }
+function calc(e){
+  const a=toMin(e?.in), b=toMin(e?.out);
+  if(a==null||b==null) return {err:"وقت ناقص"};
+  const m=b-a;
+  if(m<=0) return {err:"الطلعة قبل الدخول"};
+  if(m<FULL_MIN) return {day:0, hrs:m/60, ot:0, total:m/60};
+  if(m<=DAY_MAX) return {day:1, hrs:0, ot:0, total:m/60};
+  return {day:1, hrs:0, ot:(m-DAY_MAX)/60, total:m/60};
+}
+function fmtH(h){ const r=Math.round(h*100)/100; return (Number.isInteger(r)?r:r.toFixed(2).replace(/0$/,""))+""; }
+function resText(c){
+  if(c.err) return {t:c.err,cls:"bad"};
+  if(!c.day) return {t:fmtH(c.hrs)+" ساعة",cls:"part"};
+  if(c.ot>0) return {t:"يوم + "+fmtH(c.ot)+" أوفر",cls:"ot"};
+  return {t:"يوم كامل",cls:"full"};
+}
+
+/* ---------- الدوام اليومي ---------- */
+const DAYS=["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+function todayStr(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function shiftDate(s,n){ const d=new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+let curDate=null, dayData={entries:{}}, dayUnsub=null;
+
+function lastDefs(){ try{ return JSON.parse(localStorage.getItem("dob_defs"))||{}; }catch(e){ return {}; } }
+function curDefs(){
+  const L=lastDefs(), d=dayData.def||{};
+  return { in:d.in||L.in||"07:00", out:d.out||L.out||"16:30", b:d.b||L.b||buildings[0].id };
+}
+
+function openDay(ds){
+  curDate=ds; $("dDate").value=ds;
+  const d=new Date(ds+"T12:00:00");
+  $("dLabel").textContent=DAYS[d.getDay()]+(ds===todayStr()?" — اليوم":"");
+  if(dayUnsub) dayUnsub();
+  dayData={entries:{}}; renderAttend();
+  dayUnsub=onSnapshot(doc(db,"days",ds), snap=>{
+    if(ds!==curDate) return;
+    dayData = snap.exists()? snap.data() : {entries:{}};
+    dayData.entries ||= {};
+    renderAttend();
+  });
+}
+$("dPrev").onclick=()=>openDay(shiftDate(curDate,-1));
+$("dNext").onclick=()=>openDay(shiftDate(curDate,1));
+$("dDate").onchange=()=>{ if($("dDate").value) openDay($("dDate").value); };
+
+function saveDefs(){
+  const def={in:$("defIn").value, out:$("defOut").value, b:$("defB").value};
+  localStorage.setItem("dob_defs",JSON.stringify(def));
+  setDoc(doc(db,"days",curDate),{def},{merge:true});
+}
+["defIn","defOut","defB"].forEach(id=>$(id).addEventListener("change",saveDefs));
+
+function setEntry(wid,val){ // val=null يعني غائب
+  dayData.entries[wid]=val; renderAttend();
+  setDoc(doc(db,"days",curDate),{entries:{[wid]:val}, date:curDate},{merge:true});
+}
+function present(e){ return e && e.in; }
+
+function renderAttend(){
+  if(!curDate || !$("attList")) return;
+  const D=curDefs();
+  if(document.activeElement!==$("defIn")) $("defIn").value=D.in;
+  if(document.activeElement!==$("defOut")) $("defOut").value=D.out;
+  if(document.activeElement!==$("defB")) $("defB").value=D.b;
+
+  const E=dayData.entries||{};
+  // العمال الفعّالين + أي متوقف عنده دوام بهذا اليوم
+  const list=workers.filter(w=>w.active!==false || present(E[w.id]));
+  let nP=0,nDay=0,hrs=0,ot=0;
+  list.forEach(w=>{ const e=E[w.id]; if(!present(e)) return; nP++; const c=calc(e); if(c.err) return; nDay+=c.day; hrs+=c.hrs; ot+=c.ot; });
+  $("dStats").innerHTML=
+    `<div class="stat"><b>${nP}/${list.length}</b><span>حاضر</span></div>`+
+    `<div class="stat"><b>${nDay}</b><span>يوم كامل</span></div>`+
+    `<div class="stat"><b>${fmtH(hrs)}</b><span>ساعات ناقصة</span></div>`+
+    `<div class="stat"><b>${fmtH(ot)}</b><span>أوفر تايم</span></div>`;
+
+  if(!workers.length){ $("attList").innerHTML=`<div class="empty">أضف العمال أولاً من تبويب العمال.</div>`; return; }
+
+  const order=[...trades.map(t=>t.id),"__none"], groups={};
+  list.forEach(w=>{ const k=trades.some(t=>t.id===w.tradeId)?w.tradeId:"__none"; (groups[k] ||= []).push(w); });
+  let html="";
+  order.forEach(k=>{
+    const g=groups[k]; if(!g) return;
+    g.sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+    const gp=g.filter(w=>present(E[w.id])).length;
+    html+=`<div class="group"><div class="group-h"><span>${esc(k==="__none"?"بدون مهنة":tradeName(k))}</span><span class="count">${gp}/${g.length}</span></div><div class="list">`;
+    g.forEach(w=>{
+      const e=E[w.id], on=present(e);
+      let sub="", res="";
+      if(on){
+        const r=resText(calc(e));
+        sub=`<small>${esc(e.in)} – ${esc(e.out||"؟")} · ${esc(bName(e.b))}</small>`;
+        res=`<span class="res ${r.cls}" data-edit="${w.id}">${r.t}</span>`;
+      }
+      html+=`<div class="att ${on?"on":""}"><div class="chk" data-tog="${w.id}">${on?"✓":""}</div>
+        <div class="nm" data-edit="${w.id}">${esc(w.name)}${w.active===false?' <span class="tag">متوقف</span>':""}${sub}</div>${res}</div>`;
+    });
+    html+=`</div></div>`;
+  });
+  $("attList").innerHTML=html;
+  $("attList").querySelectorAll("[data-tog]").forEach(el=>el.onclick=()=>{
+    const id=el.dataset.tog, e=E[id];
+    if(present(e)) setEntry(id,null);
+    else { const D=curDefs(); setEntry(id,{in:D.in,out:D.out,b:D.b}); }
+  });
+  $("attList").querySelectorAll("[data-edit]").forEach(el=>el.onclick=()=>openEntry(el.dataset.edit));
+}
+
+$("allPresent").onclick=()=>{
+  const E=dayData.entries||{}, D=curDefs();
+  const todo=workers.filter(w=>w.active!==false && !present(E[w.id]));
+  if(!todo.length){ toast("الكل حاضر"); return; }
+  if(!confirm(`تأشير ${todo.length} عامل حاضر بوقت ${D.in} – ${D.out}؟`)) return;
+  const upd={}; todo.forEach(w=>{ upd[w.id]={in:D.in,out:D.out,b:D.b}; dayData.entries[w.id]=upd[w.id]; });
+  renderAttend();
+  setDoc(doc(db,"days",curDate),{entries:upd,date:curDate},{merge:true});
+};
+$("applyDefs").onclick=()=>{
+  const E=dayData.entries||{}, D=curDefs();
+  const ids=Object.keys(E).filter(id=>present(E[id]));
+  if(!ids.length){ toast("ماكو حاضرين"); return; }
+  if(!confirm(`تغيير وقت ${ids.length} عامل حاضر إلى ${D.in} – ${D.out}؟\n(البناية ما تتغير)`)) return;
+  const upd={}; ids.forEach(id=>{ upd[id]={...E[id],in:D.in,out:D.out}; dayData.entries[id]=upd[id]; });
+  renderAttend();
+  setDoc(doc(db,"days",curDate),{entries:upd},{merge:true});
+};
+
+function openEntry(wid){
+  const w=workers.find(x=>x.id===wid); if(!w) return;
+  const D=curDefs(), e=dayData.entries[wid]||{in:D.in,out:D.out,b:D.b}, was=present(dayData.entries[wid]);
+  const m=openModal(`
+    <h3>${esc(w.name)} <span class="muted">— ${esc(tradeName(w.tradeId))}</span></h3>
+    <div class="defs" style="grid-template-columns:1fr 1fr">
+      <div><label>دخول</label><input type="time" id="eIn" value="${esc(e.in)}"></div>
+      <div><label>طلعة</label><input type="time" id="eOut" value="${esc(e.out||"")}"></div>
+    </div>
+    <div class="field" style="margin-top:10px"><label>البناية</label>
+      <select id="eB">${buildings.map(b=>`<option value="${b.id}" ${b.id===e.b?"selected":""}>${esc(b.name)}</option>`).join("")}</select></div>
+    <div class="calc" id="eCalc"></div>
+    <div class="actions">
+      <button class="btn ok" id="eSave">حفظ</button>
+      <button class="btn sec" id="eCancel">إلغاء</button>
+    </div>
+    ${was?`<div class="actions" style="margin-top:10px"><button class="btn bad" id="eAbs">غائب (مسح الدوام)</button></div>`:""}
+  `);
+  const upd=()=>{ const c=calc({in:m.querySelector("#eIn").value,out:m.querySelector("#eOut").value}); const r=resText(c);
+    m.querySelector("#eCalc").textContent = c.err? r.t : (c.day? `${fmtH(c.total)} ساعة ← ${r.t}` : `${fmtH(c.total)} ساعة ← أقل من 9، تنحسب ساعات`); };
+  m.querySelector("#eIn").oninput=upd; m.querySelector("#eOut").oninput=upd; upd();
+  m.querySelector("#eCancel").onclick=closeModal;
+  m.querySelector("#eSave").onclick=()=>{
+    const v={in:m.querySelector("#eIn").value,out:m.querySelector("#eOut").value,b:m.querySelector("#eB").value};
+    const c=calc(v); if(c.err){ toast(c.err); return; }
+    setEntry(wid,v); closeModal();
+  };
+  const ab=m.querySelector("#eAbs"); if(ab) ab.onclick=()=>{ setEntry(wid,null); closeModal(); };
 }
 
 /* ---------- التبويبات ---------- */
