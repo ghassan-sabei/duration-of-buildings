@@ -397,6 +397,10 @@ function deleteDoc(ref){ const b=FB.writeBatch(db); b.delete(ref); return b.comm
 function addDoc(col,data){ const r=doc(col); setDoc(r,data); return r; }
 
 // تحديث تلقائي داخل التطبيق: لما تنزل نسخة جديدة
+// service worker للعمل بدون إنترنت على ويندوز والمتصفح (مو داخل تطبيق الأندرويد)
+if(!window.AndroidBridge && "serviceWorker" in navigator && location.protocol==="https:"){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
 window.__updateReady = function(){
   if(confirm("توجد نسخة جديدة من التطبيق. تحديث الآن؟")) location.reload();
 };

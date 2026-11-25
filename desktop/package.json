@@ -1,0 +1,26 @@
+{
+  "name": "duration-of-buildings",
+  "productName": "Buildings Attendance",
+  "version": "1.0.0",
+  "description": "دوام عمال البنايات - نسخة ويندوز",
+  "main": "main.js",
+  "author": "Satcon",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.satcon.buildings",
+    "productName": "Buildings Attendance",
+    "artifactName": "BuildingsAttendance-Setup.${ext}",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "package.json", "build/**"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "shortcutName": "Buildings Attendance", "createDesktopShortcut": true }
+  }
+}
