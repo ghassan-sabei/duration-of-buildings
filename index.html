@@ -99,6 +99,7 @@
   .att.on .chk{background:var(--ok);border-color:var(--ok)}
   .att .nm{flex:1;min-width:0;cursor:pointer}
   .att .nm small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .att{gap:6px}
   .res{font-size:13px;padding:3px 8px;border-radius:8px;white-space:nowrap;cursor:pointer}
   .res.full{background:#dcf3e5;color:var(--ok)}
   .res.part{background:#fde7d3;color:var(--warn)}
@@ -473,8 +474,7 @@ function fmtH(h){ const r=Math.round(h*100)/100; return (Number.isInteger(r)?r:r
 function resText(c){
   if(c.err) return {t:c.err,cls:"bad"};
   if(!c.day) return {t:fmtH(c.hrs)+" ساعة",cls:"part"};
-  if(c.ot>0) return {t:"يوم + "+fmtH(c.ot)+" أوفر",cls:"ot"};
-  return {t:"يوم كامل",cls:"full"};
+  return {t:"دوام",cls:"full"};
 }
 
 /* ---------- الدوام اليومي ---------- */
@@ -563,7 +563,8 @@ function renderAttend(){
       if(on){
         const r=resText(calc(e));
         sub=`<small>${esc(e.in)} – ${esc(e.out||"؟")} · ${esc(bName(e.b))}</small>`;
-        res=`<span class="res ${r.cls}" data-edit="${w.id}">${r.t}</span>`;
+        const c2=calc(e);
+        res=`<span class="res ${r.cls}" data-edit="${w.id}">${r.t}</span>`+(!c2.err&&c2.ot>0?`<span class="res ot" data-edit="${w.id}">أوفر ${fmtH(c2.ot)}</span>`:"");
       }
       html+=`<div class="att ${on?"on":""} ${ed?"":"ro"}"><div class="chk" data-tog="${w.id}">${on?"✓":""}</div>
         <div class="nm" data-edit="${w.id}">${esc(w.name)}${w.active===false?' <span class="tag">متوقف</span>':""}${sub}</div>${res}</div>`;
@@ -620,7 +621,7 @@ function openEntry(wid){
     ${was?`<div class="actions" style="margin-top:10px"><button class="btn bad" id="eAbs">غائب (مسح الدوام)</button></div>`:""}
   `);
   const upd=()=>{ const c=calc({in:m.querySelector("#eIn").value,out:m.querySelector("#eOut").value}); const r=resText(c);
-    m.querySelector("#eCalc").textContent = c.err? r.t : (c.day? `${fmtH(c.total)} ساعة ← ${r.t}` : `${fmtH(c.total)} ساعة ← أقل من 9، تنحسب ساعات`); };
+    m.querySelector("#eCalc").textContent = c.err? r.t : (c.day? `${fmtH(c.total)} ساعة ← دوام`+(c.ot>0?` + أوفر تايم ${fmtH(c.ot)} ساعة`:"") : `${fmtH(c.total)} ساعة ← أقل من 9، تنحسب ساعات`); };
   m.querySelector("#eIn").oninput=upd; m.querySelector("#eOut").oninput=upd; upd();
   m.querySelector("#eCancel").onclick=closeModal;
   m.querySelector("#eSave").onclick=()=>{
