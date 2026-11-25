@@ -796,10 +796,11 @@ function repWorker(ym,wid){
     <table><tr><th>التاريخ</th><th>اليوم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>أوفر تايم</th><th>البناية</th></tr>`;
   rows.forEach(({d,e})=>{
     const dn=DAYS[new Date(d+"T12:00:00").getDay()];
-    if(!present(e)){ h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td class="abs" colspan="6">—</td></tr>`; return; }
+    if(!present(e)) return; // الأيام بدون دوام ما تنكتب
     const c=calc(e);
     h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td></tr>`;
   });
+  if(!rows.some(x=>present(x.e))) h+=`<tr><td colspan="8" class="abs">لا يوجد دوام بهذا الشهر</td></tr>`;
   const S=sumEntries(rows.map(x=>x.e));
   h+=`<tr class="tot"><td colspan="8">أيام الحضور ${S.pres} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
   h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
