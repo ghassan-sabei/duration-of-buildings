@@ -746,22 +746,22 @@ function renderReport(){
 
 function repDaily(d){
   const day=rDays[d]||{}, E=day.entries||{};
-  const ws=workers.filter(w=>w.active!==false || present(E[w.id]));
+  const ws=workers.filter(w=>present(E[w.id])); // الغائب ما يطلع بالكشف
   const dn=DAYS[new Date(d+"T12:00:00").getDay()];
   let h=`<div class="rep">${HEADF()}<div class="sub">الكشف اليومي — ${dn} ${fmtDate(d)}${day.locked?" — 🔒 مقفول":""}</div>
     <table><tr><th>#</th><th>الاسم</th><th>دخول</th><th>طلعة</th><th>ساعات</th><th>النتيجة</th><th>أوفر تايم</th><th>البناية</th><th>التوقيع</th></tr>`;
   let i=0;
   groupByTrade(ws).forEach(g=>{
-    h+=`<tr class="grp"><td colspan="9">${esc(g.name)} (${g.ws.filter(w=>present(E[w.id])).length}/${g.ws.length})</td></tr>`;
+    h+=`<tr class="grp"><td colspan="9">${esc(g.name)} (${g.ws.length})</td></tr>`;
     g.ws.forEach(w=>{
       const e=E[w.id]; i++;
-      if(!present(e)){ h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td class="abs" colspan="6">غائب</td><td class="sig"></td></tr>`; return; }
       const c=calc(e);
       h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
     });
   });
+  if(!ws.length) h+=`<tr><td colspan="9" class="abs">لا يوجد دوام بهذا اليوم</td></tr>`;
   const S=sumEntries(ws.map(w=>E[w.id]));
-  h+=`<tr class="tot"><td colspan="9">الحاضرين ${S.pres} من ${ws.length} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
+  h+=`<tr class="tot"><td colspan="9">عدد الحاضرين ${S.pres} · أيام كاملة ${S.days} · ساعات ناقصة ${fmtH(S.hrs)} · أوفر تايم ${fmtH(S.ot)}</td></tr></table>`;
   // حسب البناية لهذا اليوم
   h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>عدد العمال</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th></tr>`;
   buildings.forEach(b=>{ const l=ws.map(w=>E[w.id]).filter(e=>present(e)&&e.b===b.id); const s2=sumEntries(l);
@@ -773,7 +773,7 @@ function repDaily(d){
 function monthEntries(ym,wid){ return monthDays(ym).map(d=>({d,e:(rDays[d]?.entries||{})[wid]})); }
 
 function repMonthly(ym){
-  const ws=workers.filter(w=>w.active!==false || monthEntries(ym,w.id).some(x=>present(x.e)));
+  const ws=workers.filter(w=>monthEntries(ym,w.id).some(x=>present(x.e))); // اللي ما داوم بالشهر ما يطلع
   let h=`<div class="rep">${HEADF()}<div class="sub">الملخص الشهري — ${monthName(ym)}</div>
     <table><tr><th>#</th><th>الاسم</th><th>أيام الحضور</th><th>أيام كاملة</th><th>ساعات ناقصة</th><th>أوفر تايم</th><th>التوقيع</th></tr>`;
   let i=0, T={pres:0,days:0,hrs:0,ot:0};
@@ -783,6 +783,7 @@ function repMonthly(ym){
       T.pres+=S.pres; T.days+=S.days; T.hrs+=S.hrs; T.ot+=S.ot;
       h+=`<tr class="click" data-w="${w.id}"><td>${i}</td><td class="n">${esc(w.name)}</td><td>${S.pres}</td><td>${S.days}</td><td>${fmtH(S.hrs)}</td><td>${fmtH(S.ot)}</td><td class="sig"></td></tr>`; });
   });
+  if(!ws.length) h+=`<tr><td colspan="7" class="abs">لا يوجد دوام بهذا الشهر</td></tr>`;
   h+=`<tr class="tot"><td colspan="2">المجموع</td><td>${T.pres}</td><td>${T.days}</td><td>${fmtH(T.hrs)}</td><td>${fmtH(T.ot)}</td><td></td></tr></table>
     <p class="muted" style="margin-top:6px">اضغط على أي عامل حتى تشوف كشفه يوم بيوم.</p>
     <div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
