@@ -152,6 +152,16 @@
   #pv .pages img{display:block;margin:0 auto 12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
   #pv .pn{color:#ddd;text-align:center;font-size:12px;margin:-8px 0 12px}
   #busy{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .cc{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .cc-h{display:flex;align-items:center;gap:10px;padding:10px 12px}
+  .cc-h .nm{flex:1;font-weight:700}
+  .cc.on .cc-h{background:#eaf6ef}
+  .cc .dot{width:12px;height:12px;border-radius:50%;background:#cfd4dc;flex:0 0 12px}
+  .cc.on .dot{background:var(--ok)}
+  .crow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line);cursor:pointer;font-size:14px}
+  .crow .loc{flex:1}
+  .crow .loc small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .crow .cnt{background:#dbe7fb;color:#1d4ed8;border-radius:8px;padding:3px 9px;font-weight:700;white-space:nowrap}
   #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
     padding:9px 16px;border-radius:9px;font-size:14px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
   #toast.show{opacity:.92}
@@ -222,6 +232,23 @@
       <button class="fab" id="addWorkerBtn">+ عامل</button>
     </section>
 
+    <section id="tab-contr" class="hidden">
+      <div class="card">
+        <div class="datebar">
+          <button class="btn sec" id="cPrev">›</button>
+          <input type="date" id="cDate">
+          <button class="btn sec" id="cNext">‹</button>
+        </div>
+        <div class="daylabel" id="cLabel"></div>
+        <div id="cLockBar"></div>
+        <div class="stats" id="cStats"></div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn sec sm" id="cManage">قائمة المقاولين</button>
+        </div>
+      </div>
+      <div id="cList"></div>
+    </section>
+
     <section id="tab-reports" class="hidden">
       <div class="card" id="rControls">
         <div class="rform">
@@ -231,11 +258,17 @@
               <option value="monthly">ملخص العمال</option>
               <option value="worker">كشف عامل</option>
               <option value="building">ملخص حسب البناية</option>
+              <optgroup label="المقاولين">
+                <option value="cdaily">كشف المقاولين اليومي</option>
+                <option value="csummary">ملخص المقاولين</option>
+                <option value="ccontr">كشف مقاول</option>
+              </optgroup>
             </select></div>
           <div id="rDateW"><label>اليوم</label><input type="date" id="rDate"></div>
           <div id="rFromW" class="hidden"><label>من تاريخ</label><input type="date" id="rFrom"></div>
           <div id="rToW" class="hidden"><label>إلى تاريخ</label><input type="date" id="rTo"></div>
           <div id="rWorkerW" class="hidden"><label>العامل</label><select id="rWorker"></select></div>
+          <div id="rContrW" class="hidden"><label>المقاول</label><select id="rContr"></select></div>
         </div>
         <div class="actions" style="margin-top:10px">
           <button class="btn sec" id="rPreview">👁️ معاينة</button>
@@ -285,6 +318,7 @@
   <nav class="tabs">
     <button data-tab="attend" class="on"><span class="ic">📋</span>الدوام</button>
     <button data-tab="workers"><span class="ic">👷</span>العمال</button>
+    <button data-tab="contr"><span class="ic">🏗️</span>المقاولين</button>
     <button data-tab="reports"><span class="ic">📊</span>الكشوفات</button>
     <button data-tab="settings"><span class="ic">⚙️</span>الإعدادات</button>
   </nav>
@@ -330,7 +364,9 @@ const LS_KEY = "dob_pass_hash";
 const SALT = "duration-of-buildings::";
 
 let trades = [];   // {id,name}
-let workers = [];  // {id,name,tradeId,active}
+let workers = [];
+let contractors = []; // {id,name,active}
+let cdayData = {rows:{}}, cdayUnsub=null;  // {id,name,tradeId,active}
 let serverHash = null;
 const DEFAULT_BUILDINGS=[{id:"b1",name:"بناية 1"},{id:"b2",name:"بناية 2"},{id:"b3",name:"بناية 3"}];
 let buildings = DEFAULT_BUILDINGS;
@@ -379,7 +415,7 @@ onAuthStateChanged(auth, async user=>{
     if(document.activeElement!==$("projName")) $("projName").value=projectName;
     if(typeof renderReport==="function") renderReport();
     $("lockMode").value = autoLock?"auto":"manual";
-    renderBuildings(); if(typeof renderAttend==="function") renderAttend();
+    renderBuildings(); if(typeof renderAttend==="function"){ renderAttend(); renderContr(); }
     const local = localStorage.getItem(LS_KEY);
     if(serverHash && local===serverHash){ enterApp(); }
     else if(!serverHash && snap.metadata.fromCache && !navigator.onLine){
@@ -452,6 +488,10 @@ function enterApp(){
   onSnapshot(collection(db,"workers"), s=>{
     workers = s.docs.map(d=>({id:d.id,...d.data()}));
     renderWorkers(); refreshOpenTradesModal(); renderAttend(); fillWorkerSelect(); renderReport();
+  });
+  onSnapshot(collection(db,"contractors"), s=>{
+    contractors = s.docs.map(d=>({id:d.id,...d.data()}));
+    renderContr(); refreshContrModal(); fillContrSelect(); renderReport();
   });
   openDay(todayStr());
 }
@@ -537,21 +577,32 @@ function curDefs(){
 }
 
 function openDay(ds){
-  curDate=ds; $("dDate").value=ds;
+  curDate=ds; $("dDate").value=ds; $("cDate").value=ds;
   const d=new Date(ds+"T12:00:00");
-  $("dLabel").textContent=DAYS[d.getDay()]+(ds===todayStr()?" — اليوم":"");
+  $("dLabel").textContent=$("cLabel").textContent=DAYS[d.getDay()]+(ds===todayStr()?" — اليوم":"");
+  if(cdayUnsub) cdayUnsub();
+  cdayData={rows:{}}; renderContr();
+  cdayUnsub=onSnapshot(doc(db,"cdays",ds), snap=>{
+    if(ds!==curDate) return;
+    cdayData = snap.exists()? snap.data() : {rows:{}};
+    cdayData.rows ||= {};
+    renderContr();
+  });
   if(dayUnsub) dayUnsub();
   dayData={entries:{}}; renderAttend();
   dayUnsub=onSnapshot(doc(db,"days",ds), snap=>{
     if(ds!==curDate) return;
     dayData = snap.exists()? snap.data() : {entries:{}};
     dayData.entries ||= {};
-    renderAttend();
+    renderAttend(); renderContr();
   });
 }
 $("dPrev").onclick=()=>openDay(shiftDate(curDate,-1));
 $("dNext").onclick=()=>openDay(shiftDate(curDate,1));
 $("dDate").onchange=()=>{ if($("dDate").value) openDay($("dDate").value); };
+$("cPrev").onclick=()=>openDay(shiftDate(curDate,-1));
+$("cNext").onclick=()=>openDay(shiftDate(curDate,1));
+$("cDate").onchange=()=>{ if($("cDate").value) openDay($("cDate").value); };
 
 function saveDefs(){
   const def={in:$("defIn").value, out:$("defOut").value, b:$("defB").value};
@@ -687,7 +738,7 @@ function setOverride(d,until){ const o=overrides(); if(until) o[d]=until; else d
 function isLocked(d=curDate,data=dayData){ return !!(data&&data.locked) || (autoLock && d<todayStr()); }
 function canEdit(d=curDate){ return !isLocked(d) || (overrides()[d]||0)>Date.now(); }
 function minsLeft(){ return Math.max(1,Math.ceil(((overrides()[curDate]||0)-Date.now())/60000)); }
-setInterval(()=>{ if(curDate && isLocked() && overrides()[curDate]) renderAttend(); },30000);
+setInterval(()=>{ if(curDate && isLocked() && overrides()[curDate]){ renderAttend(); renderContr(); } },30000);
 
 function askPassword(title){
   return new Promise(res=>{
@@ -704,12 +755,12 @@ function askPassword(title){
 }
 function lockDay(){
   if(!confirm("قفل هذا اليوم؟ بعد القفل يصير للعرض والطباعة بس.")) return;
-  dayData.locked=true; setOverride(curDate,0); renderAttend();
+  dayData.locked=true; setOverride(curDate,0); renderAttend(); renderContr();
   setDoc(doc(db,"days",curDate),{locked:true,date:curDate},{merge:true});
 }
 async function unlockDay(){
   if(!await askPassword("فتح اليوم لمدة 10 دقايق")) return;
-  setOverride(curDate,Date.now()+UNLOCK_MS); renderAttend(); toast("انفتح لمدة 10 دقايق");
+  setOverride(curDate,Date.now()+UNLOCK_MS); renderAttend(); renderContr(); toast("انفتح لمدة 10 دقايق");
 }
 $("projSave").onclick=()=>{
   const n=norm($("projName").value);
@@ -722,8 +773,141 @@ $("lockMode").onchange=async ()=>{
   if(!await askPassword("تغيير نوع القفل")) return;
   autoLock=want; $("lockMode").value=want?"auto":"manual";
   setDoc(settingsRef,{autoLock:want},{merge:true});
-  renderAttend(); toast("تم");
+  renderAttend(); renderContr(); toast("تم");
 };
+
+/* ---------- المقاولين (منفصلين عن العمال) ---------- */
+function cName(id){ return contractors.find(c=>c.id===id)?.name || "—"; }
+function rowsOf(data,cid){ return Object.entries((data&&data.rows)||{}).filter(([k,r])=>r&&r.cid===cid).map(([k,r])=>({id:k,...r})); }
+function locText(r){ return [bName(r.b), r.floor?`طابق ${r.floor}`:"", r.flat?`شقة ${r.flat}`:""].filter(Boolean).join(" · "); }
+function hrsOf(r){ const a=toMin(r.in), b=toMin(r.out); return (a!=null&&b!=null&&b>a)?(b-a)/60:null; }
+
+function renderContr(){
+  if(!curDate || !$("cList")) return;
+  const ed=canEdit(), lk=isLocked();
+  if(!lk) $("cLockBar").innerHTML=`<div class="lockbar"><span>🔓 اليوم مفتوح</span><button class="btn sec sm" data-lk="lock">قفل اليوم</button></div>`;
+  else if(ed) $("cLockBar").innerHTML=`<div class="lockbar open"><span>🔓 مفتوح مؤقتاً على هذا الجهاز (${minsLeft()} د)</span><button class="btn sec sm" data-lk="relock">قفل</button></div>`;
+  else $("cLockBar").innerHTML=`<div class="lockbar locked"><span>🔒 اليوم مقفول</span><button class="btn sec sm" data-lk="unlock">فتح</button></div>`;
+  $("cLockBar").querySelector("[data-lk]").onclick=e=>{ const a=e.target.dataset.lk; if(a==="lock") lockDay(); else if(a==="unlock") unlockDay(); else { setOverride(curDate,0); renderAttend(); renderContr(); } };
+
+  const R=cdayData.rows||{};
+  const list=contractors.filter(c=>c.active!==false || rowsOf(cdayData,c.id).length)
+    .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+  const presentN=list.filter(c=>rowsOf(cdayData,c.id).length).length;
+  const totalW=Object.values(R).filter(r=>r&&r.cid).reduce((s,r)=>s+(+r.n||0),0);
+  $("cStats").innerHTML=`<div class="stat"><b>${presentN}/${list.length}</b><span>مقاول حاضر</span></div><div class="stat"><b>${totalW}</b><span>مجموع عمالهم</span></div>`;
+
+  if(!contractors.length){ $("cList").innerHTML=`<div class="empty">ماكو مقاولين بعد.<br>اضغط <b>قائمة المقاولين</b> وضيفهم.</div>`; return; }
+  $("cList").innerHTML=list.map(c=>{
+    const rows=rowsOf(cdayData,c.id), on=rows.length>0, n=rows.reduce((s,r)=>s+(+r.n||0),0);
+    return `<div class="cc ${on?"on":""}"><div class="cc-h"><span class="dot"></span><span class="nm">${esc(c.name)}${c.active===false?' <span class="tag">متوقف</span>':""}</span>
+      ${on?`<span class="muted">${n} عامل</span>`:`<span class="muted">غائب</span>`}
+      ${ed?`<button class="btn ok sm" data-add="${c.id}">+ ${on?"مكان":"حاضر"}</button>`:""}</div>`+
+      rows.map(r=>`<div class="crow" data-row="${r.id}"><span class="loc">${esc(locText(r))}<small>${fmtT(r.in)} – ${fmtT(r.out)}${hrsOf(r)!=null?` · ${fmtH(hrsOf(r))} ساعة`:""}</small></span><span class="cnt">${+r.n||0} عامل</span></div>`).join("")+`</div>`;
+  }).join("");
+  $("cList").querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>openCRow(b.dataset.add,null));
+  $("cList").querySelectorAll("[data-row]").forEach(el=>el.onclick=()=>{ if(!canEdit()){ toast("اليوم مقفول"); return; } const r=R[el.dataset.row]; openCRow(r.cid,{id:el.dataset.row,...r}); });
+}
+
+function setCRow(id,val){
+  if(!canEdit()){ toast("اليوم مقفول"); return; }
+  cdayData.rows[id]=val; renderContr();
+  setDoc(doc(db,"cdays",curDate),{rows:{[id]:val},date:curDate},{merge:true});
+}
+
+function openCRow(cid,row){
+  if(!canEdit()){ toast("اليوم مقفول"); return; }
+  const D=curDefs(), last=JSON.parse(localStorage.getItem("dob_crow")||"{}");
+  const r=row||{in:D.in,out:D.out,b:last.b||D.b,floor:"",flat:"",n:""};
+  const m=openModal(`
+    <h3>${esc(cName(cid))}</h3>
+    <div class="defs" style="grid-template-columns:1fr 1fr">
+      <div class="span2"><label>البناية</label><select id="crB">${buildings.map(b=>`<option value="${b.id}" ${b.id===r.b?"selected":""}>${esc(b.name)}</option>`).join("")}</select></div>
+      <div><label>الطابق</label><input type="text" id="crFloor" value="${esc(r.floor||"")}" placeholder="مثلاً 7 أو سرداب"></div>
+      <div><label>الشقة</label><input type="text" id="crFlat" value="${esc(r.flat||"")}" placeholder="مثلاً 3"></div>
+      <div class="span2"><label>عدد العمال ويا المقاول</label><input type="text" inputmode="numeric" id="crN" value="${esc(r.n??"")}" placeholder="0"></div>
+      <div><label>دخول</label>${tfHTML("crIn",r.in)}</div>
+      <div><label>خروج</label>${tfHTML("crOut",r.out)}</div>
+    </div>
+    <div class="err" id="crErr"></div>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn ok" id="crSave">حفظ</button>
+      <button class="btn sec" id="crCancel">إلغاء</button>
+    </div>
+    ${row?`<div class="actions" style="margin-top:10px"><button class="btn bad" id="crDel">حذف هذا المكان</button></div>`:""}
+  `);
+  tfWire(m);
+  m.querySelector("#crCancel").onclick=closeModal;
+  m.querySelector("#crSave").onclick=()=>{
+    const n=parseInt(String(m.querySelector("#crN").value).replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)),10);
+    const v={cid, b:m.querySelector("#crB").value, floor:norm(m.querySelector("#crFloor").value), flat:norm(m.querySelector("#crFlat").value),
+      n:isNaN(n)?0:n, in:m.querySelector("#crIn").value, out:m.querySelector("#crOut").value};
+    const e=m.querySelector("#crErr");
+    if(!(toMin(v.out)>toMin(v.in))){ e.textContent="الخروج لازم يكون بعد الدخول"; return; }
+    if(v.n<0){ e.textContent="عدد العمال غلط"; return; }
+    localStorage.setItem("dob_crow",JSON.stringify({b:v.b}));
+    setCRow(row?row.id:("r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)), v);
+    closeModal();
+  };
+  const del=m.querySelector("#crDel");
+  if(del) del.onclick=()=>{ if(confirm("حذف هذا المكان؟")){ setCRow(row.id,null); closeModal(); } };
+}
+
+/* قائمة المقاولين */
+let contrModalOpen=false;
+$("cManage").onclick=openContrModal;
+function openContrModal(){
+  contrModalOpen=true;
+  const m=openModal(`
+    <h3>قائمة المقاولين</h3>
+    <div class="row" style="margin-bottom:12px">
+      <input type="text" id="coNew" class="grow" placeholder="اسم مقاول جديد">
+      <button class="btn ok" id="coAdd">إضافة</button>
+    </div>
+    <div class="err" id="coErr"></div>
+    <div id="coList"></div>
+    <div class="actions"><button class="btn sec" id="coClose">إغلاق</button></div>`);
+  m.querySelector("#coClose").onclick=()=>{ contrModalOpen=false; closeModal(); };
+  const add=()=>{
+    const name=norm(m.querySelector("#coNew").value), e=m.querySelector("#coErr"); e.textContent="";
+    if(!name) return;
+    if(contractors.some(c=>norm(c.name)===name)){ e.textContent="المقاول موجود"; return; }
+    addDoc(collection(db,"contractors"),{name,active:true,createdAt:serverTimestamp()});
+    m.querySelector("#coNew").value=""; m.querySelector("#coNew").focus();
+  };
+  m.querySelector("#coAdd").onclick=add;
+  m.querySelector("#coNew").addEventListener("keydown",ev=>{ if(ev.key==="Enter") add(); });
+  refreshContrModal();
+  setTimeout(()=>m.querySelector("#coNew").focus(),50);
+}
+function refreshContrModal(){
+  if(!contrModalOpen) return;
+  const box=document.querySelector("#coList"); if(!box) return;
+  const list=[...contractors].sort((a,b)=>(a.active===false)-(b.active===false)||(a.name||"").localeCompare(b.name||"","ar"));
+  if(!list.length){ box.innerHTML=`<div class="empty">ماكو مقاولين بعد</div>`; return; }
+  box.innerHTML=`<div class="list" style="border-top:1px solid var(--line);border-radius:10px">`+list.map(c=>`
+    <div class="item ${c.active===false?"stopped":""}" style="cursor:default"><span>${esc(c.name)}${c.active===false?' <span class="tag">متوقف</span>':""}</span>
+      <span class="row"><button class="btn sec sm" data-ren="${c.id}">تعديل</button>
+      <button class="btn ${c.active===false?"":"bad"} sm" data-tg="${c.id}">${c.active===false?"إرجاع":"إيقاف"}</button></span></div>`).join("")+`</div>
+    <p class="muted">المقاول المتوقف ما يطلع بالقائمة اليومية، وسجله القديم يبقى بالكشوفات.</p>`;
+  box.querySelectorAll("[data-ren]").forEach(b=>b.onclick=()=>{
+    const c=contractors.find(x=>x.id===b.dataset.ren);
+    const nn=norm(prompt("الاسم الجديد:",c.name)||""); if(!nn||nn===c.name) return;
+    if(contractors.some(x=>x.id!==c.id&&norm(x.name)===nn)){ toast("الاسم موجود"); return; }
+    updateDoc(doc(db,"contractors",c.id),{name:nn});
+  });
+  box.querySelectorAll("[data-tg]").forEach(b=>b.onclick=()=>{
+    const c=contractors.find(x=>x.id===b.dataset.tg), stop=c.active!==false;
+    if(stop&&!confirm(`إيقاف ${c.name}؟`)) return;
+    updateDoc(doc(db,"contractors",c.id),{active:!stop});
+  });
+}
+function fillContrSelect(){
+  const sel=$("rContr"); if(!sel) return; const v=sel.value;
+  const cs=[...contractors].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+  sel.innerHTML=cs.map(c=>`<option value="${c.id}">${esc(c.name)}${c.active===false?" (متوقف)":""}</option>`).join("");
+  if(v&&cs.some(c=>c.id===v)) sel.value=v;
+}
 
 /* ---------- الكشوفات ---------- */
 const MONTHS=["كانون الثاني","شباط","آذار","نيسان","أيار","حزيران","تموز","آب","أيلول","تشرين الأول","تشرين الثاني","كانون الأول"];
@@ -734,11 +918,13 @@ let rUnsub=null, rDays={}, rKey="";
 
 function rParams(){
   const t=$("rType").value;
-  $("rDateW").classList.toggle("hidden",t!=="daily");
-  $("rFromW").classList.toggle("hidden",t==="daily");
-  $("rToW").classList.toggle("hidden",t==="daily");
+  const single=(t==="daily"||t==="cdaily");
+  $("rDateW").classList.toggle("hidden",!single);
+  $("rFromW").classList.toggle("hidden",single);
+  $("rToW").classList.toggle("hidden",single);
   $("rWorkerW").classList.toggle("hidden",t!=="worker");
-  return {t, date:$("rDate").value, ym:($("rFrom").value&&$("rTo").value)?$("rFrom").value+"|"+$("rTo").value:"", wid:$("rWorker").value};
+  $("rContrW").classList.toggle("hidden",t!=="ccontr");
+  return {t, single, col:t[0]==="c"?"cdays":"days", cid:$("rContr").value, date:$("rDate").value, ym:($("rFrom").value&&$("rTo").value)?$("rFrom").value+"|"+$("rTo").value:"", wid:$("rWorker").value};
 }
 function fillWorkerSelect(){
   const v=$("rWorker").value;
@@ -748,31 +934,32 @@ function fillWorkerSelect(){
 }
 function rSubscribe(){
   const P=rParams();
-  const key=P.t==="daily"?"d:"+P.date:"m:"+P.ym;
+  const key=P.col+(P.single?"|d:"+P.date:"|m:"+P.ym);
   if(key===rKey) { renderReport(); return; }
   rKey=key; rDays={}; if(rUnsub) rUnsub();
   $("printArea").innerHTML=`<div class="empty">جارِ التحميل...</div>`;
-  if(P.t==="daily"){
+  if(P.single){
     if(!P.date) return;
-    rUnsub=onSnapshot(doc(db,"days",P.date),snap=>{ rDays={}; if(snap.exists()) rDays[P.date]=snap.data(); renderReport(); });
+    rUnsub=onSnapshot(doc(db,P.col,P.date),snap=>{ rDays={}; if(snap.exists()) rDays[P.date]=snap.data(); renderReport(); });
   } else {
     if(!P.ym){ $("printArea").innerHTML=`<div class="empty">اختر من تاريخ وإلى تاريخ</div>`; return; }
     const [f,t]=P.ym.split("|");
     if(f>t){ $("printArea").innerHTML=`<div class="empty">"من تاريخ" لازم يكون قبل "إلى تاريخ"</div>`; rKey=""; return; }
-    const q=FB.query(collection(db,"days"),FB.where("date",">=",f),FB.where("date","<=",t));
+    const q=FB.query(collection(db,P.col),FB.where("date",">=",f),FB.where("date","<=",t));
     rUnsub=onSnapshot(q,snap=>{ rDays={}; snap.docs.forEach(d=>rDays[d.id]=d.data()); renderReport(); });
   }
 }
 ["rType","rDate","rFrom","rTo"].forEach(id=>$(id).addEventListener("change",rSubscribe));
 $("rWorker").addEventListener("change",renderReport);
+$("rContr").addEventListener("change",renderReport);
 /* ---------- PDF + معاينة ---------- */
 const LIBS=["https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js","https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
 function loadScript(u){ return new Promise((res,rej)=>{ const sc=document.createElement("script"); sc.src=u; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); }); }
 function loadLibs(){ return (window.html2canvas&&window.jspdf)?Promise.resolve():Promise.all(LIBS.map(loadScript)); }
 function busy(on,msg){ let b=$("busy"); if(!on){ if(b) b.remove(); return; } if(!b){ b=document.createElement("div"); b.id="busy"; document.body.appendChild(b); } b.textContent=msg||"جارِ التجهيز..."; }
 function repFileName(){
-  const P=rParams(), T={daily:"daily",monthly:"workers",worker:"worker",building:"buildings"}[P.t];
-  return `attendance-${T}-${P.t==="daily"?P.date:P.ym.replace("|","_to_")}.pdf`;
+  const P=rParams(), T={daily:"daily",monthly:"workers",worker:"worker",building:"buildings",cdaily:"contractors-daily",csummary:"contractors",ccontr:"contractor"}[P.t];
+  return `attendance-${T}-${P.single?P.date:P.ym.replace("|","_to_")}.pdf`;
 }
 const PW=794, PH=Math.round(794*297/210), PM=30; // صفحة A4 بالبكسل وهامشها
 async function buildPages(){
@@ -877,7 +1064,7 @@ $("rShare").onclick=()=>sharePdf();
 
 $("rPrint").onclick=()=>{
   const P=rParams();
-  const title = P.t==="daily" ? "دوام "+P.date : "دوام "+P.ym.replace("|"," - ");
+  const title = P.single ? "دوام "+P.date : "دوام "+P.ym.replace("|"," - ");
   if(window.AndroidBridge && AndroidBridge.printSized) AndroidBridge.printSized(title,"A4P");
   else window.print();
 };
@@ -903,6 +1090,64 @@ function renderReport(){
   if(P.t==="monthly") { A.innerHTML=repMonthly(P.ym); A.querySelectorAll("tr[data-w]").forEach(tr=>tr.onclick=()=>{ $("rType").value="worker"; rParams(); $("rWorker").value=tr.dataset.w; renderReport(); scrollTo(0,0); }); return; }
   if(P.t==="worker") return A.innerHTML=repWorker(P.ym,P.wid);
   if(P.t==="building") return A.innerHTML=repBuilding(P.ym);
+  if(P.t==="cdaily") return A.innerHTML=repCDaily(P.date);
+  if(P.t==="csummary"){ A.innerHTML=repCSummary(P.ym); A.querySelectorAll("tr[data-c]").forEach(tr=>tr.onclick=()=>{ $("rType").value="ccontr"; rParams(); $("rContr").value=tr.dataset.c; renderReport(); scrollTo(0,0); }); return; }
+  if(P.t==="ccontr") return A.innerHTML=repCContr(P.ym,P.cid);
+}
+
+/* كشوفات المقاولين */
+function allRows(data){ return Object.entries((data&&data.rows)||{}).filter(([k,r])=>r&&r.cid).map(([k,r])=>({id:k,...r})); }
+function sortRows(rows){ return rows.sort((a,b)=>(cName(a.cid)).localeCompare(cName(b.cid),"ar")||String(a.b).localeCompare(String(b.b))||String(a.floor).localeCompare(String(b.floor),"ar",{numeric:true})||String(a.flat).localeCompare(String(b.flat),"ar",{numeric:true})); }
+function repCDaily(d){
+  const rows=sortRows(allRows(rDays[d]));
+  const dn=DAYS[new Date(d+"T12:00:00").getDay()];
+  let h=`<div class="rep">${HEADF()}<div class="sub">كشف المقاولين اليومي — ${dn} ${fmtDate(d)}</div>
+    <table><tr><th>#</th><th>المقاول</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th><th>التوقيع</th></tr>`;
+  let i=0, prev=null, tot=0;
+  rows.forEach(r=>{
+    const first=r.cid!==prev; prev=r.cid; if(first) i++; tot+=(+r.n||0);
+    const span=first?rows.filter(x=>x.cid===r.cid).length:0;
+    h+=`<tr>${first?`<td rowspan="${span}">${i}</td><td class="n" rowspan="${span}">${esc(cName(r.cid))}</td>`:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td>${first?`<td class="sig" rowspan="${span}"></td>`:""}</tr>`;
+  });
+  if(!rows.length) h+=`<tr><td colspan="10" class="abs">لا يوجد مقاولين حاضرين بهذا اليوم</td></tr>`;
+  h+=`<tr class="tot"><td colspan="10">عدد المقاولين الحاضرين ${i} · مجموع العمال ${tot}</td></tr></table>`;
+  h+=`<table style="margin-top:8px"><tr><th>البناية</th><th>عدد المقاولين</th><th>مجموع العمال</th></tr>`;
+  buildings.forEach(b=>{ const l=rows.filter(r=>r.b===b.id); h+=`<tr><td>${esc(b.name)}</td><td>${new Set(l.map(r=>r.cid)).size}</td><td>${l.reduce((s,r)=>s+(+r.n||0),0)}</td></tr>`; });
+  return h+`</table><div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
+}
+function repCSummary(ym){
+  const days=monthDays(ym), stat={};
+  days.forEach(d=>allRows(rDays[d]).forEach(r=>{
+    const S=(stat[r.cid] ||= {days:new Set(),w:0,b:{}});
+    S.days.add(d); S.w+=(+r.n||0); S.b[r.b]=(S.b[r.b]||0)+(+r.n||0);
+  }));
+  const ids=Object.keys(stat).sort((a,b)=>cName(a).localeCompare(cName(b),"ar"));
+  let h=`<div class="rep">${HEADF()}<div class="sub">ملخص المقاولين — ${monthName(ym)}</div>
+    <table><tr><th>#</th><th>المقاول</th><th>أيام الحضور</th>${buildings.map(b=>`<th>عمال ${esc(b.name)}</th>`).join("")}<th>مجموع العمال</th><th>التوقيع</th></tr>`;
+  let T={d:0,w:0,b:{}};
+  ids.forEach((id,i)=>{ const S=stat[id]; T.d+=S.days.size; T.w+=S.w; buildings.forEach(b=>T.b[b.id]=(T.b[b.id]||0)+(S.b[b.id]||0));
+    h+=`<tr class="click" data-c="${id}"><td>${i+1}</td><td class="n">${esc(cName(id))}</td><td>${S.days.size}</td>${buildings.map(b=>`<td>${S.b[b.id]||0}</td>`).join("")}<td>${S.w}</td><td class="sig"></td></tr>`; });
+  if(!ids.length) h+=`<tr><td colspan="${5+buildings.length}" class="abs">لا يوجد دوام مقاولين بهذه الفترة</td></tr>`;
+  h+=`<tr class="tot"><td colspan="2">المجموع</td><td>${T.d}</td>${buildings.map(b=>`<td>${T.b[b.id]||0}</td>`).join("")}<td>${T.w}</td><td></td></tr></table>
+    <p class="muted" style="margin-top:6px">"مجموع العمال" = مجموع عدد العمال بكل الأيام (عامل × يوم). اضغط على أي مقاول حتى تشوف كشفه.</p>
+    <div class="sign"><div>توقيع المشرف</div><div>توقيع الإدارة</div></div></div>`;
+  return h;
+}
+function repCContr(ym,cid){
+  const c=contractors.find(x=>x.id===cid); if(!c) return `<div class="empty">اختر مقاول</div>`;
+  let h=`<div class="rep">${HEADF()}<div class="sub">كشف المقاول: <b>${esc(c.name)}</b> — ${monthName(ym)}</div>
+    <table><tr><th>التاريخ</th><th>اليوم</th><th>البناية</th><th>الطابق</th><th>الشقة</th><th>عدد العمال</th><th>دخول</th><th>خروج</th><th>ساعات</th></tr>`;
+  let nd=0, tw=0;
+  monthDays(ym).forEach(d=>{
+    const rows=sortRows(rowsOf(rDays[d],cid)); if(!rows.length) return; nd++;
+    const dn=DAYS[new Date(d+"T12:00:00").getDay()];
+    rows.forEach((r,j)=>{ tw+=(+r.n||0);
+      h+=`<tr>${j===0?`<td rowspan="${rows.length}">${fmtDate(d)}</td><td rowspan="${rows.length}">${dn}</td>`:""}<td>${esc(bName(r.b))}</td><td>${esc(r.floor||"")}</td><td>${esc(r.flat||"")}</td><td>${+r.n||0}</td><td>${fmtT(r.in)}</td><td>${fmtT(r.out)}</td><td>${hrsOf(r)!=null?fmtH(hrsOf(r)):""}</td></tr>`; });
+  });
+  if(!nd) h+=`<tr><td colspan="9" class="abs">لا يوجد دوام بهذه الفترة</td></tr>`;
+  h+=`<tr class="tot"><td colspan="9">أيام الحضور ${nd} · مجموع العمال ${tw}</td></tr></table>
+    <div class="sign"><div>توقيع المقاول</div><div>توقيع المشرف</div></div></div>`;
+  return h;
 }
 
 function repDaily(d){
@@ -999,7 +1244,7 @@ function repBuilding(ym){
 }
 
 /* ---------- التبويبات ---------- */
-const TITLES={attend:"الدوام اليومي",workers:"العمال",reports:"الكشوفات",settings:"الإعدادات"};
+const TITLES={attend:"الدوام اليومي",workers:"العمال",contr:"المقاولين",reports:"الكشوفات",settings:"الإعدادات"};
 document.querySelectorAll("nav.tabs button").forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.toggle("on",x===b));
@@ -1008,7 +1253,7 @@ document.querySelectorAll("nav.tabs button").forEach(b=>{
     if(b.dataset.tab==="reports"){
       if(!$("rDate").value) $("rDate").value=curDate||todayStr();
       if(!$("rFrom").value){ const t=todayStr(); $("rFrom").value=t.slice(0,8)+"01"; $("rTo").value=t; }
-      fillWorkerSelect(); rSubscribe();
+      fillWorkerSelect(); fillContrSelect(); rSubscribe();
     }
   };
 });
@@ -1070,7 +1315,7 @@ function openModal(html){
   bg.addEventListener("click",e=>{ if(e.target===bg) closeModal(); });
   return bg.firstChild;
 }
-function closeModal(){ $("modalRoot").innerHTML=""; tradesModalOpen=false; }
+function closeModal(){ $("modalRoot").innerHTML=""; tradesModalOpen=false; contrModalOpen=false; }
 
 /* ---------- إضافة / تعديل عامل ---------- */
 $("addWorkerBtn").onclick=()=>openWorker(null);
