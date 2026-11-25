@@ -314,6 +314,24 @@
         <button class="btn sec" id="switchProj">المشاريع / تبديل المشروع</button>
       </div>
       <div class="card">
+        <h2>تغيير رمز المشروع</h2>
+        <div class="row"><input type="text" id="newCode" class="grow" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="الرمز الجديد"><button class="btn" id="changeCodeBtn">تغيير</button></div>
+        <div class="err" id="codeChErr"></div>
+        <p class="muted">كل بيانات المشروع تنتقل للرمز الجديد. الأجهزة الثانية المربوطة تنتقل وحدها لما تتصل بالإنترنت. يحتاج إنترنت وكلمة السر.</p>
+      </div>
+      <div class="card">
+        <h2>مسح البيانات</h2>
+        <div class="defs" style="grid-template-columns:1fr 1fr;margin-top:0">
+          <div><label>من تاريخ</label><input type="date" id="delFrom"></div>
+          <div><label>إلى تاريخ</label><input type="date" id="delTo"></div>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="delW" checked> دوام العمال</label>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="delC" checked> دوام المقاولين</label>
+        <button class="btn bad" id="delBtn" style="margin-top:10px">مسح</button>
+        <div class="err" id="delErr"></div>
+        <p class="muted">يمسح دوام الأيام المحددة لهذا المشروع بس، من الهاتف ومن السيرفر ومن كل الأجهزة المربوطة. قائمة العمال والمقاولين والمهن ما تنمسح. ما يرجع بعد المسح. يحتاج إنترنت وكلمة السر.</p>
+      </div>
+      <div class="card">
         <h2>اسم المشروع</h2>
         <div class="row"><input type="text" id="projName" class="grow" placeholder="مثلاً: مشروع البنايات الثلاث"><button class="btn" id="projSave">حفظ</button></div>
         <p class="muted">يطلع بأعلى كل الكشوفات المطبوعة.</p>
@@ -466,6 +484,13 @@ function startProject(){
   $("projCode").textContent=PROJ; $("loginProj").textContent=PROJ;
   // راقب كلمة السر بالسيرفر: إذا تغيرت، هذا الجهاز يطلبها من جديد
   onSnapshot(settingsRef, snap=>{
+    const mv = snap.exists() && snap.data().movedTo;
+    if(mv && movingCode) return; // هذا الجهاز هو اللي غيّر الرمز
+    if(mv){ // رمز المشروع تغيّر من جهاز ثاني
+      const old=projList().find(x=>x.code===PROJ)||{};
+      saveProjList(projList().filter(x=>x.code!==PROJ&&x.code!==mv).concat([{code:mv,name:old.name,hash:old.hash}]));
+      toast("رمز المشروع تغيّر إلى "+mv); setTimeout(()=>switchTo(mv),1200); return;
+    }
     serverHash = snap.exists() ? (snap.data().passHash||null) : null;
     const bl = snap.exists() && snap.data().buildings;
     buildings = Array.isArray(bl)&&bl.length ? bl : DEFAULT_BUILDINGS;
@@ -590,6 +615,73 @@ $("loginSwitch").onclick = e=>{ e.preventDefault(); openProjects(); };
 $("switchProj").onclick = ()=>openProjects();
 $("projChip").onclick = ()=>openProjects();
 $("codeBack").onclick = ()=>openProjects();
+
+/* ---------- تغيير رمز المشروع ---------- */
+const PROJ_COLS=["trades","workers","contractors","days","cdays"];
+let movingCode=false;
+async function commitOps(ops){ // ops: [type, ref, data]
+  for(let i=0;i<ops.length;i+=400){
+    const b=FB.writeBatch(db);
+    ops.slice(i,i+400).forEach(([t,r,d])=>t==="set"?b.set(r,d):b.delete(r));
+    await withNet(b.commit());
+  }
+}
+$("changeCodeBtn").onclick=async ()=>{
+  const e=$("codeChErr"); e.textContent="";
+  const nc=$("newCode").value.trim().toLowerCase();
+  if(!/^[a-z0-9-]{4,30}$/.test(nc)){ e.textContent="الرمز: 4 أحرف إنكليزية أو أرقام على الأقل، ويُسمح بالشرطة (-)"; return; }
+  if(nc===PROJ){ e.textContent="هذا نفس الرمز الحالي"; return; }
+  if(!await askPassword("تغيير رمز المشروع إلى "+nc)) return;
+  busy(true,"جارِ نقل المشروع...");
+  const old={...(projList().find(x=>x.code===PROJ)||{})};
+  try{
+    if(await projectExists(nc)){ e.textContent="هذا الرمز مستعمل لمشروع ثاني"; return; }
+    const sets=[], dels=[];
+    for(const name of PROJ_COLS){
+      const q=await withNet(FB.getDocsFromServer(col(name)));
+      q.docs.forEach(d=>{ sets.push(["set",doc(db,"projects",nc,name,d.id),d.data()]); dels.push(["del",d.ref||dref(name,d.id)]); });
+    }
+    const sq=await withNet(FB.getDocsFromServer(collection(db,"projects",PROJ,"meta")));
+    const sd=(sq.docs.find(d=>d.id==="settings")||{data:()=>({})}).data();
+    sets.push(["set",doc(db,"projects",nc,"meta","settings"),sd]);
+    await commitOps(sets);           // أولاً نسخ للرمز الجديد
+    movingCode=true;
+    await commitOps(dels);           // بعدها مسح القديم
+    await commitOps([["set",doc(db,"projects",PROJ,"meta","settings"),{movedTo:nc}]]); // تحويل الأجهزة الثانية
+    saveProjList(projList().filter(x=>x.code!==PROJ&&x.code!==nc).concat([{code:nc,name:old.name,hash:old.hash}]));
+    busy(false); alert("تم. رمز المشروع الجديد: "+nc); switchTo(nc);
+  }catch(err){ movingCode=false; e.textContent="ما اكتمل التغيير. تأكد من الإنترنت وجرّب مرة ثانية."; }
+  finally{ busy(false); }
+};
+
+/* ---------- مسح البيانات من تاريخ إلى تاريخ ---------- */
+$("delBtn").onclick=async ()=>{
+  const e=$("delErr"); e.textContent="";
+  const f=$("delFrom").value, t=$("delTo").value, cw=$("delW").checked, cc=$("delC").checked;
+  if(!f||!t){ e.textContent="اختر من تاريخ وإلى تاريخ"; return; }
+  if(f>t){ e.textContent="\"من تاريخ\" لازم يكون قبل \"إلى تاريخ\""; return; }
+  if(!cw&&!cc){ e.textContent="اختر شنو تريد تمسح"; return; }
+  busy(true,"جارِ الحساب...");
+  let refs=[], nW=0, nC=0;
+  try{
+    const ids=new Set(monthDays(f+"|"+t));
+    for(const [name,on] of [["days",cw],["cdays",cc]]){
+      if(!on) continue;
+      // نجيب كل وثائق الأيام ونفلتر بالتاريخ (يشمل الأيام اللي ما بيها حقل التاريخ)
+      const q=await withNet(FB.getDocsFromServer(col(name)));
+      q.docs.filter(d=>ids.has(d.id)).forEach(d=>{ refs.push(["del",dref(name,d.id)]); if(name==="days") nW++; else nC++; });
+    }
+  }catch(err){ busy(false); e.textContent="يحتاج إنترنت"; return; }
+  busy(false);
+  if(!refs.length){ e.textContent="ماكو بيانات بهذي الفترة"; return; }
+  const what=[cw?`دوام العمال (${nW} يوم)`:"",cc?`دوام المقاولين (${nC} يوم)`:""].filter(Boolean).join(" و ");
+  if(!confirm(`راح ينمسح ${what}\nمن ${fmtDate(f)} إلى ${fmtDate(t)}\nمن الهاتف والسيرفر. ما يرجع بعد المسح. متأكد؟`)) return;
+  if(!await askPassword("تأكيد المسح")) return;
+  busy(true,"جارِ المسح...");
+  try{ await commitOps(refs); toast("تم المسح"); rKey=""; openDay(curDate); }
+  catch(err){ e.textContent="ما اكتمل المسح. تأكد من الإنترنت وجرّب مرة ثانية."; }
+  finally{ busy(false); }
+};
 
 function openProjects(){
   const l=projList();
