@@ -84,8 +84,12 @@
   .datebar input{flex:1;text-align:center;font-weight:700}
   .datebar .btn{padding:10px 14px;font-size:18px}
   .daylabel{text-align:center;color:var(--muted);font-size:13px;margin-top:6px}
-  .defs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+  .defs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
   .defs select{padding:10px 6px}
+  .defs .span2{grid-column:1/-1}
+  .tf{display:flex;gap:3px;direction:ltr}
+  .tf select{flex:1;min-width:0;padding:9px 2px!important;text-align:center;text-align-last:center}
+  .tf select.p{flex:1.1}
   .defs label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
   input[type=time],input[type=date]{width:100%;padding:10px 8px;border:1px solid #cfd4dc;border-radius:9px;background:#fff}
   .stats{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
@@ -187,9 +191,9 @@
         </div>
         <div class="daylabel" id="dLabel"></div>
         <div class="defs">
-          <div><label>دخول</label><input type="time" id="defIn"></div>
-          <div><label>خروج</label><input type="time" id="defOut"></div>
-          <div><label>البناية</label><select id="defB"></select></div>
+          <div><label>دخول</label><span class="tfslot" data-id="defIn"></span></div>
+          <div><label>خروج</label><span class="tfslot" data-id="defOut"></span></div>
+          <div class="span2"><label>البناية</label><select id="defB"></select></div>
         </div>
         <p class="muted" style="margin:8px 0 0">هذي القيم تنطبق على أي عامل تأشّره حاضر. تقدر تعدّل لكل عامل بالضغط على اسمه.</p>
         <div id="lockBar"></div>
@@ -468,6 +472,38 @@ function renderBuildings(){
   const sel=$("defB"); if(sel){ const v=sel.value; sel.innerHTML=buildings.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join(""); if(v) sel.value=v; }
 }
 
+/* ---------- الوقت بنظام 12 ساعة ---------- */
+function fmtT(t){ const m=toMin(t); if(m==null) return ""; let h=Math.floor(m/60), mi=m%60; const p=h<12?"ص":"م"; h=h%12||12; return `${h}:${String(mi).padStart(2,"0")} ${p}`; }
+function tfHTML(id,val){
+  let hs="",ms="";
+  for(let h=1;h<=12;h++) hs+=`<option value="${h}">${h}</option>`;
+  for(let m=0;m<60;m+=5) ms+=`<option value="${m}">${String(m).padStart(2,"0")}</option>`;
+  return `<div class="tf" data-tf="${id}"><select class="h">${hs}</select><select class="m">${ms}</select><select class="p"><option value="am">ص</option><option value="pm">م</option></select><input type="hidden" id="${id}" value="${esc(val||"")}"></div>`;
+}
+function tfSync(box){ // من القيمة المخفية إلى القوائم
+  const inp=box.querySelector("input"), m=toMin(inp.value);
+  if(m==null) return;
+  let h=Math.floor(m/60), mi=m%60;
+  const ms=box.querySelector(".m");
+  if(![...ms.options].some(o=>+o.value===mi)){ const o=new Option(String(mi).padStart(2,"0"),mi); ms.add(o); [...ms.options].sort((a,b)=>a.value-b.value).forEach(x=>ms.add(x)); }
+  box.querySelector(".h").value=String(h%12||12); ms.value=String(mi); box.querySelector(".p").value=h<12?"am":"pm";
+}
+function tfWire(root){
+  root.querySelectorAll(".tf:not([data-w])").forEach(box=>{
+    box.dataset.w=1; tfSync(box);
+    box.querySelectorAll("select").forEach(sel=>sel.addEventListener("change",()=>{
+      let h=+box.querySelector(".h").value%12; if(box.querySelector(".p").value==="pm") h+=12;
+      const inp=box.querySelector("input");
+      inp.value=`${String(h).padStart(2,"0")}:${String(box.querySelector(".m").value).padStart(2,"0")}`;
+      inp.dispatchEvent(new Event("input")); inp.dispatchEvent(new Event("change"));
+    }));
+  });
+}
+function setTF(id,val){ const inp=$(id); if(!inp||inp.value===val) return; inp.value=val; tfSync(inp.closest(".tf")); }
+function tfDisable(id,dis){ const inp=$(id); if(inp) inp.closest(".tf").querySelectorAll("select").forEach(x=>x.disabled=dis); }
+document.querySelectorAll(".tfslot").forEach(sl=>{ sl.outerHTML=tfHTML(sl.dataset.id,""); });
+tfWire(document);
+
 /* ---------- حساب الدوام ---------- */
 // من الدخول للخروج مباشرة: أقل من 9 = ساعات، 9 إلى 9.5 = يوم، أكثر من 9.5 = يوم + أوفر تايم
 const FULL_MIN=9*60, DAY_MAX=9.5*60;
@@ -536,15 +572,15 @@ function renderAttend(){
   if(!curDate || !$("attList")) return;
   const D=curDefs();
   const ed=canEdit(), lk=isLocked();
-  ["defIn","defOut","defB","allPresent","applyDefs"].forEach(id=>$(id).disabled=!ed);
+  ["defB","allPresent","applyDefs"].forEach(id=>$(id).disabled=!ed);
+  ["defIn","defOut"].forEach(id=>tfDisable(id,!ed));
   if(!lk) $("lockBar").innerHTML=`<div class="lockbar"><span>🔓 اليوم مفتوح</span><button class="btn sec sm" id="lockBtn">قفل اليوم</button></div>`;
   else if(ed) $("lockBar").innerHTML=`<div class="lockbar open"><span>🔓 مفتوح مؤقتاً على هذا الجهاز (${minsLeft()} د)</span><button class="btn sec sm" id="relockBtn">قفل</button></div>`;
   else $("lockBar").innerHTML=`<div class="lockbar locked"><span>🔒 اليوم مقفول</span><button class="btn sec sm" id="unlockBtn">فتح</button></div>`;
   const lb=$("lockBtn"); if(lb) lb.onclick=lockDay;
   const ub=$("unlockBtn"); if(ub) ub.onclick=unlockDay;
   const rb=$("relockBtn"); if(rb) rb.onclick=()=>{ setOverride(curDate,0); renderAttend(); };
-  if(document.activeElement!==$("defIn")) $("defIn").value=D.in;
-  if(document.activeElement!==$("defOut")) $("defOut").value=D.out;
+  setTF("defIn",D.in); setTF("defOut",D.out);
   if(document.activeElement!==$("defB")) $("defB").value=D.b;
 
   const E=dayData.entries||{};
@@ -573,7 +609,7 @@ function renderAttend(){
       let sub="", res="";
       if(on){
         const r=resText(calc(e));
-        sub=`<small>${esc(e.in)} – ${esc(e.out||"؟")} · ${esc(bName(e.b))}</small>`;
+        sub=`<small>${fmtT(e.in)} – ${e.out?fmtT(e.out):"؟"} · ${esc(bName(e.b))}</small>`;
         const c2=calc(e);
         res=`<span class="res ${r.cls}" data-edit="${w.id}">${r.t}</span>`+(!c2.err&&c2.ot>0?`<span class="res ot" data-edit="${w.id}">أوفر ${fmtH(c2.ot)}</span>`:"");
       }
@@ -597,7 +633,7 @@ $("allPresent").onclick=()=>{
   const E=dayData.entries||{}, D=curDefs();
   const todo=workers.filter(w=>w.active!==false && !present(E[w.id]));
   if(!todo.length){ toast("الكل حاضر"); return; }
-  if(!confirm(`تأشير ${todo.length} عامل حاضر بوقت ${D.in} – ${D.out}؟`)) return;
+  if(!confirm(`تأشير ${todo.length} عامل حاضر بوقت ${fmtT(D.in)} – ${fmtT(D.out)}؟`)) return;
   const upd={}; todo.forEach(w=>{ upd[w.id]={in:D.in,out:D.out,b:D.b}; dayData.entries[w.id]=upd[w.id]; });
   renderAttend();
   setDoc(doc(db,"days",curDate),{entries:upd,date:curDate},{merge:true});
@@ -607,7 +643,7 @@ $("applyDefs").onclick=()=>{
   const E=dayData.entries||{}, D=curDefs();
   const ids=Object.keys(E).filter(id=>present(E[id]));
   if(!ids.length){ toast("ماكو حاضرين"); return; }
-  if(!confirm(`تغيير وقت ${ids.length} عامل حاضر إلى ${D.in} – ${D.out}؟\n(البناية ما تتغير)`)) return;
+  if(!confirm(`تغيير وقت ${ids.length} عامل حاضر إلى ${fmtT(D.in)} – ${fmtT(D.out)}؟\n(البناية ما تتغير)`)) return;
   const upd={}; ids.forEach(id=>{ upd[id]={...E[id],in:D.in,out:D.out}; dayData.entries[id]=upd[id]; });
   renderAttend();
   setDoc(doc(db,"days",curDate),{entries:upd},{merge:true});
@@ -619,8 +655,8 @@ function openEntry(wid){
   const m=openModal(`
     <h3>${esc(w.name)} <span class="muted">— ${esc(tradeName(w.tradeId))}</span></h3>
     <div class="defs" style="grid-template-columns:1fr 1fr">
-      <div><label>دخول</label><input type="time" id="eIn" value="${esc(e.in)}"></div>
-      <div><label>خروج</label><input type="time" id="eOut" value="${esc(e.out||"")}"></div>
+      <div><label>دخول</label>${tfHTML("eIn",e.in)}</div>
+      <div><label>خروج</label>${tfHTML("eOut",e.out||"")}</div>
     </div>
     <div class="field" style="margin-top:10px"><label>البناية</label>
       <select id="eB">${buildings.map(b=>`<option value="${b.id}" ${b.id===e.b?"selected":""}>${esc(b.name)}</option>`).join("")}</select></div>
@@ -633,6 +669,7 @@ function openEntry(wid){
   `);
   const upd=()=>{ const c=calc({in:m.querySelector("#eIn").value,out:m.querySelector("#eOut").value}); const r=resText(c);
     m.querySelector("#eCalc").textContent = c.err? r.t : (c.day? `${fmtH(c.total)} ساعة ← دوام`+(c.ot>0?` + أوفر تايم ${fmtH(c.ot)} ساعة`:"") : `${fmtH(c.total)} ساعة ← أقل من 9، تنحسب ساعات`); };
+  tfWire(m);
   m.querySelector("#eIn").oninput=upd; m.querySelector("#eOut").oninput=upd; upd();
   m.querySelector("#eCancel").onclick=closeModal;
   m.querySelector("#eSave").onclick=()=>{
@@ -880,7 +917,7 @@ function repDaily(d){
     g.ws.forEach(w=>{
       const e=E[w.id]; i++;
       const c=calc(e);
-      h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
+      h+=`<tr><td>${i}</td><td class="n">${esc(w.name)}</td><td>${fmtT(e.in)}</td><td>${fmtT(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td><td class="sig"></td></tr>`;
     });
   });
   if(!ws.length) h+=`<tr><td colspan="9" class="abs">لا يوجد دوام بهذا اليوم</td></tr>`;
@@ -923,7 +960,7 @@ function repWorker(ym,wid){
     const dn=DAYS[new Date(d+"T12:00:00").getDay()];
     if(!present(e)) return; // الأيام بدون دوام ما تنكتب
     const c=calc(e);
-    h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${esc(e.in)}</td><td>${esc(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td></tr>`;
+    h+=`<tr><td>${fmtDate(d)}</td><td>${dn}</td><td>${fmtT(e.in)}</td><td>${fmtT(e.out)}</td><td>${c.err?"":fmtH(c.total)}</td><td>${repRes(c)}</td><td>${otCell(c)}</td><td>${esc(bName(e.b))}</td></tr>`;
   });
   if(!rows.some(x=>present(x.e))) h+=`<tr><td colspan="8" class="abs">لا يوجد دوام بهذه الفترة</td></tr>`;
   const S=sumEntries(rows.map(x=>x.e));
