@@ -21,6 +21,7 @@
   header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;
     padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
   header h1{font-size:18px;margin:0}
+  .chip{border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:12px;padding:2px 10px;font-size:12px;margin-top:3px;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
   #netState{font-size:12px;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.18)}
   #netState.off{background:#b45309}
 
@@ -183,6 +184,7 @@
       <button class="btn sec" id="codeNew">إنشاء مشروع جديد</button>
     </div>
     <div class="err" id="codeErr"></div>
+    <button class="btn sec hidden" id="codeBack" style="width:100%;margin-bottom:8px">↩ مشاريعي المحفوظة</button>
     <p class="muted" style="font-size:13px">أول جهاز: اختار رمز واضغط <b>إنشاء مشروع جديد</b>. باقي الأجهزة: نفس الرمز و<b>انضمام</b>.</p>
   </div>
 </div>
@@ -203,7 +205,7 @@
 <!-- التطبيق -->
 <div id="appView" class="hidden">
   <header>
-    <h1 id="title">الدوام اليومي</h1>
+    <div style="min-width:0"><h1 id="title">الدوام اليومي</h1><button id="projChip" class="chip">🏢 ▾</button></div>
     <span id="netState">متصل</span>
   </header>
 
@@ -308,8 +310,8 @@
       <div class="card">
         <h2>رمز المشروع</h2>
         <p style="margin:0 0 8px">الرمز: <b dir="ltr" id="projCode" style="font-size:18px"></b></p>
-        <p class="muted">حتى تربط جهاز ثاني: نزّل التطبيق عليه، اكتب نفس الرمز واضغط <b>انضمام</b>، وبعدها كلمة السر.</p>
-        <button class="btn sec" id="switchProj">تغيير المشروع على هذا الجهاز</button>
+        <p class="muted">حتى تربط جهاز ثاني: نزّل التطبيق عليه، اكتب نفس الرمز واضغط <b>انضمام</b>، وبعدها كلمة السر. وتقدر تبدّل بين مشاريعك من اسم المشروع فوق.</p>
+        <button class="btn sec" id="switchProj">المشاريع / تبديل المشروع</button>
       </div>
       <div class="card">
         <h2>اسم المشروع</h2>
@@ -431,6 +433,17 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden) updateNe
 // كل بيانات المشروع تحت projects/{رمز المشروع}/...
 const CODE_KEY="dob_code";
 let PROJ=localStorage.getItem(CODE_KEY)||"";
+// المشاريع المحفوظة على هذا الجهاز: [{code,name,hash}]
+function projList(){ try{ return JSON.parse(localStorage.getItem("dob_projects"))||[]; }catch(e){ return []; } }
+function saveProjList(l){ localStorage.setItem("dob_projects",JSON.stringify(l)); }
+function upsertProj(code,patch){ const l=projList(); let e=l.find(x=>x.code===code); if(!e){ e={code}; l.push(e); } Object.assign(e,patch); saveProjList(l); }
+function getHash(){ return projList().find(x=>x.code===PROJ)?.hash||null; }
+function setHash(h){ upsertProj(PROJ,{hash:h}); }
+function clearHash(){ upsertProj(PROJ,{hash:null}); }
+// ترحيل من النسخة السابقة
+if(PROJ && localStorage.getItem(LS_KEY)){ if(!getHash()) setHash(localStorage.getItem(LS_KEY)); localStorage.removeItem(LS_KEY); }
+function switchTo(code){ localStorage.setItem(CODE_KEY,code); location.reload(); }
+function newProject(){ localStorage.removeItem(CODE_KEY); location.reload(); }
 let settingsRef=null;
 function col(name){ return collection(db,"projects",PROJ,name); }
 function dref(name,id){ return doc(db,"projects",PROJ,name,id); }
@@ -462,7 +475,9 @@ function startProject(){
     if(typeof renderReport==="function") renderReport();
     $("lockMode").value = autoLock?"auto":"manual";
     renderBuildings(); if(typeof renderAttend==="function"){ renderAttend(); renderContr(); }
-    const local = localStorage.getItem(LS_KEY);
+    if(projectName) upsertProj(PROJ,{name:projectName});
+    $("projChip").textContent="🏢 "+(projectName||PROJ)+" ▾";
+    const local = getHash();
     if(serverHash && local===serverHash){ enterApp(); }
     else if(!serverHash && snap.metadata.fromCache && !navigator.onLine){
       $("bootView").textContent="أول تشغيل يحتاج إنترنت.";
@@ -473,7 +488,7 @@ function startProject(){
 }
 
 /* ---------- رمز المشروع (ربط الأجهزة) ---------- */
-function showCode(){ $("codeErr").textContent=""; show("codeView"); }
+function showCode(){ $("codeErr").textContent=""; $("codeBack").classList.toggle("hidden",!projList().length); show("codeView"); }
 function withNet(pr){ return Promise.race([pr,new Promise((_,j)=>setTimeout(()=>j(new Error("timeout")),20000))]); }
 function codeVal(){
   const v=$("codeIn").value.trim().toLowerCase();
@@ -482,7 +497,8 @@ function codeVal(){
 }
 function projectExists(code){ return withNet(FB.getDocsFromServer(FB.query(collection(db,"projects",code,"meta"),FB.limit(1)))).then(q=>!q.empty); }
 function codeBusy(on){ $("codeJoin").disabled=$("codeNew").disabled=on; }
-function useCode(code){ localStorage.setItem(CODE_KEY,code); PROJ=code; show("bootView"); startProject(); }
+function useCode(code){ localStorage.setItem(CODE_KEY,code); PROJ=code; upsertProj(code,{});
+  if(localStorage.getItem(LS_KEY)){ if(!getHash()) setHash(localStorage.getItem(LS_KEY)); localStorage.removeItem(LS_KEY); } show("bootView"); startProject(); }
 
 $("codeJoin").onclick=async ()=>{
   const code=codeVal(); if(!code) return;
@@ -548,7 +564,7 @@ $("loginBtn").onclick = async ()=>{
   } else if(h!==serverHash){
     $("loginErr").textContent="كلمة السر غلط"; return;
   }
-  localStorage.setItem(LS_KEY,h);
+  setHash(h);
   $("pw1").value=$("pw2").value="";
   enterApp();
 };
@@ -565,19 +581,44 @@ $("changePwBtn").onclick = async ()=>{
   if(n1.length<4){ err.textContent="الجديدة لازم تكون 4 أحرف أو أكثر"; return; }
   if(n1!==n2){ err.textContent="الجديدتان غير متطابقتين"; return; }
   const h=await sha256(n1);
-  localStorage.setItem(LS_KEY,h);
+  setHash(h);
   setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
   $("curPw").value=$("newPw1").value=$("newPw2").value="";
   toast("تم تغيير كلمة السر");
 };
-$("loginSwitch").onclick = e=>{ e.preventDefault(); localStorage.removeItem(CODE_KEY); localStorage.removeItem(LS_KEY); location.reload(); };
-$("switchProj").onclick = ()=>{
-  if(!confirm("الخروج من هذا المشروع على هذا الجهاز؟ البيانات تبقى بالسيرفر، وترجع لها بنفس الرمز وكلمة السر.")) return;
-  localStorage.removeItem(CODE_KEY); localStorage.removeItem(LS_KEY); location.reload();
-};
+$("loginSwitch").onclick = e=>{ e.preventDefault(); openProjects(); };
+$("switchProj").onclick = ()=>openProjects();
+$("projChip").onclick = ()=>openProjects();
+$("codeBack").onclick = ()=>openProjects();
+
+function openProjects(){
+  const l=projList();
+  const m=openModal(`<h3>المشاريع على هذا الجهاز</h3>
+    <div class="list" style="border-top:1px solid var(--line);border-radius:10px">${l.map(p=>`
+      <div class="item" data-code="${esc(p.code)}">
+        <span><b>${esc(p.name||p.code)}</b>${p.code===PROJ?' <span class="tag" style="background:#dcf3e5;color:var(--ok)">الحالي</span>':""}<br><small class="muted" dir="ltr">${esc(p.code)}</small></span>
+        <span class="row">${p.code===PROJ?"":`<button class="btn sec sm" data-rm="${esc(p.code)}">إزالة</button>`}<span class="muted">›</span></span>
+      </div>`).join("")||`<div class="empty">ماكو مشاريع</div>`}</div>
+    <p class="muted">تضغط على مشروع حتى تنتقل له. "إزالة" تشيله من هذا الجهاز بس، وبياناته تبقى بالسيرفر.</p>
+    <div class="actions">
+      <button class="btn ok" id="pjNew">+ مشروع جديد / انضمام</button>
+      <button class="btn sec" id="pjClose">إغلاق</button>
+    </div>`);
+  m.querySelector("#pjClose").onclick=closeModal;
+  m.querySelector("#pjNew").onclick=newProject;
+  m.querySelectorAll("[data-code]").forEach(el=>el.onclick=e=>{
+    if(e.target.dataset.rm) return;
+    if(el.dataset.code===PROJ){ closeModal(); return; }
+    switchTo(el.dataset.code);
+  });
+  m.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
+    if(!confirm("إزالة هذا المشروع من هذا الجهاز؟ (البيانات تبقى بالسيرفر)")) return;
+    saveProjList(projList().filter(x=>x.code!==b.dataset.rm)); openProjects();
+  });
+}
 $("logoutBtn").onclick = ()=>{
   if(!confirm("تسجيل خروج من هذا الجهاز؟")) return;
-  localStorage.removeItem(LS_KEY);
+  clearHash();
   showLogin(false);
 };
 
