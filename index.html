@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#1f3a5f">
+<title>دوام عمال البنايات</title>
+<style>
+  :root{
+    --bg:#f2f4f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb;
+    --pri:#1f3a5f; --pri2:#2d5590; --ok:#1e8e4e; --warn:#b45309; --bad:#b42318;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;font-size:16px}
+  button,input,select{font:inherit}
+  .hidden{display:none!important}
+
+  header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;
+    padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+  header h1{font-size:18px;margin:0}
+  #netState{font-size:12px;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.18)}
+  #netState.off{background:#b45309}
+
+  main{padding:12px 12px 90px;max-width:760px;margin:0 auto}
+  nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:5;background:#fff;
+    border-top:1px solid var(--line);display:flex}
+  nav.tabs button{flex:1;border:0;background:none;padding:10px 4px 12px;color:var(--muted);
+    font-size:13px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  nav.tabs button .ic{font-size:20px;line-height:1}
+  nav.tabs button.on{color:var(--pri);font-weight:700}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:16px;margin:0 0 10px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row > *{min-width:0}
+  .grow{flex:1}
+  input[type=text],input[type=password],select{width:100%;padding:11px 12px;border:1px solid #cfd4dc;
+    border-radius:9px;background:#fff;outline:none}
+  input:focus,select:focus{border-color:var(--pri2)}
+  .btn{border:0;border-radius:9px;padding:11px 16px;background:var(--pri);color:#fff;font-weight:600;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:#e8ecf2;color:var(--ink)}
+  .btn.ok{background:var(--ok)}
+  .btn.bad{background:var(--bad)}
+  .btn.sm{padding:7px 11px;font-size:14px}
+  .btn:disabled{opacity:.5}
+  .muted{color:var(--muted);font-size:14px}
+  .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:6px}
+
+  .group{margin-bottom:12px}
+  .group-h{display:flex;justify-content:space-between;align-items:center;
+    padding:8px 12px;background:#e6ebf2;border-radius:10px 10px 0 0;font-weight:700}
+  .group-h .count{font-weight:400;font-size:13px;color:var(--muted)}
+  .list{background:#fff;border:1px solid var(--line);border-top:0;border-radius:0 0 10px 10px}
+  .item{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-top:1px solid var(--line);cursor:pointer}
+  .item:first-child{border-top:0}
+  .item .num{color:var(--muted);font-size:13px;margin-left:8px;min-width:22px;display:inline-block}
+  .item.stopped{color:var(--muted)}
+  .tag{font-size:12px;padding:2px 8px;border-radius:9px;background:#fde7d3;color:var(--warn)}
+
+  .fab{position:fixed;left:16px;bottom:78px;z-index:6;border:0;border-radius:28px;background:var(--ok);
+    color:#fff;font-weight:700;padding:14px 20px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+  .modal{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:18px;max-height:88vh;overflow:auto}
+  @media(min-width:600px){.modal-bg{align-items:center}.modal{border-radius:16px}}
+  .modal h3{margin:0 0 14px;font-size:17px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:14px;color:var(--muted);margin-bottom:5px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .actions .btn{flex:1}
+
+  #loginView{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  #loginView .card{width:100%;max-width:380px;padding:22px}
+  #loginView h2{font-size:19px;text-align:center;margin-bottom:6px}
+  #loginView p{text-align:center;margin:0 0 16px}
+
+  .empty{text-align:center;color:var(--muted);padding:28px 10px}
+  .soon{text-align:center;color:var(--muted);padding:40px 16px;line-height:1.8}
+  details summary{cursor:pointer;padding:8px 2px;color:var(--muted)}
+  #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
+    padding:9px 16px;border-radius:9px;font-size:14px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
+  #toast.show{opacity:.92}
+</style>
+</head>
+<body>
+
+<!-- شاشة التحميل -->
+<div id="bootView" class="soon">جارِ الاتصال بالسيرفر...</div>
+
+<!-- شاشة الدخول / تعيين كلمة السر -->
+<div id="loginView" class="hidden">
+  <div class="card">
+    <h2>دوام عمال البنايات</h2>
+    <p class="muted" id="loginHint">أدخل كلمة السر</p>
+    <div class="field"><input type="password" id="pw1" placeholder="كلمة السر" autocomplete="current-password"></div>
+    <div class="field hidden" id="pw2wrap"><input type="password" id="pw2" placeholder="أعد كتابة كلمة السر" autocomplete="new-password"></div>
+    <button class="btn" style="width:100%" id="loginBtn">دخول</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- التطبيق -->
+<div id="appView" class="hidden">
+  <header>
+    <h1 id="title">العمال</h1>
+    <span id="netState">متصل</span>
+  </header>
+
+  <main>
+    <section id="tab-attend" class="hidden">
+      <div class="soon">📋<br>الدوام اليومي<br>يجهز بالمرحلة 3</div>
+    </section>
+
+    <section id="tab-workers">
+      <div class="card">
+        <div class="row">
+          <input type="text" id="search" class="grow" placeholder="بحث عن عامل...">
+          <button class="btn sec sm" id="tradesBtn">المهن</button>
+        </div>
+        <div class="muted" id="workersSummary" style="margin-top:8px"></div>
+      </div>
+      <div id="workersList"></div>
+      <details id="stoppedBox" class="hidden">
+        <summary id="stoppedTitle">العمال المتوقفين</summary>
+        <div id="stoppedList"></div>
+      </details>
+      <button class="fab" id="addWorkerBtn">+ عامل</button>
+    </section>
+
+    <section id="tab-reports" class="hidden">
+      <div class="soon">📊<br>الكشوفات<br>تجهز بالمرحلة 5</div>
+    </section>
+
+    <section id="tab-settings" class="hidden">
+      <div class="card">
+        <h2>تغيير كلمة السر</h2>
+        <div class="field"><input type="password" id="curPw" placeholder="كلمة السر الحالية"></div>
+        <div class="field"><input type="password" id="newPw1" placeholder="كلمة السر الجديدة"></div>
+        <div class="field"><input type="password" id="newPw2" placeholder="أعد كتابة الجديدة"></div>
+        <button class="btn" id="changePwBtn">تغيير</button>
+        <div class="err" id="pwErr"></div>
+        <p class="muted">بعد التغيير، كل الأجهزة الثانية تطلب كلمة السر الجديدة.</p>
+      </div>
+      <div class="card">
+        <h2>هذا الجهاز</h2>
+        <button class="btn bad" id="logoutBtn">تسجيل خروج</button>
+      </div>
+      <p class="muted" style="text-align:center">المرحلة 2 — العمال والمهن</p>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button data-tab="attend"><span class="ic">📋</span>الدوام</button>
+    <button data-tab="workers" class="on"><span class="ic">👷</span>العمال</button>
+    <button data-tab="reports"><span class="ic">📊</span>الكشوفات</button>
+    <button data-tab="settings"><span class="ic">⚙️</span>الإعدادات</button>
+  </nav>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA5v4u5v0pyr9DqUzF8LA5WZ4UT4NBVhwQ",
+  authDomain: "duration-of-buildings.firebaseapp.com",
+  projectId: "duration-of-buildings",
+  storageBucket: "duration-of-buildings.firebasestorage.app",
+  messagingSenderId: "54696715728",
+  appId: "1:54696715728:web:a695bf1b438dadfd5e85d5"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+// كاش محلي: التطبيق يشتغل بدون إنترنت ويرفع التغييرات لما يرجع الاتصال
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
+const $ = id => document.getElementById(id);
+const LS_KEY = "dob_pass_hash";
+const SALT = "duration-of-buildings::";
+
+let trades = [];   // {id,name}
+let workers = [];  // {id,name,tradeId,active}
+let serverHash = null;
+let listenersOn = false;
+
+/* ---------- أدوات ---------- */
+async function sha256(text){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SALT + text));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),1800);
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function norm(s){return String(s||"").trim().replace(/\s+/g," ")}
+function show(view){
+  ["bootView","loginView","appView"].forEach(v=>$(v).classList.toggle("hidden",v!==view));
+}
+function updateNet(){
+  const on=navigator.onLine;
+  $("netState").textContent=on?"متصل":"بدون إنترنت";
+  $("netState").classList.toggle("off",!on);
+}
+addEventListener("online",updateNet); addEventListener("offline",updateNet);
+
+/* ---------- الدخول وكلمة السر ---------- */
+const settingsRef = doc(db,"settings","app");
+let firstSetup = false;
+
+onAuthStateChanged(auth, async user=>{
+  if(!user){
+    try{ await signInAnonymously(auth); }
+    catch(e){ $("bootView").textContent="تعذر الاتصال بالسيرفر. تأكد من الإنترنت وأعد فتح الصفحة."; }
+    return;
+  }
+  // راقب كلمة السر بالسيرفر: إذا تغيرت، هذا الجهاز يطلبها من جديد
+  onSnapshot(settingsRef, snap=>{
+    serverHash = snap.exists() ? (snap.data().passHash||null) : null;
+    const local = localStorage.getItem(LS_KEY);
+    if(serverHash && local===serverHash){ enterApp(); }
+    else if(!serverHash && snap.metadata.fromCache && !navigator.onLine){
+      $("bootView").textContent="أول تشغيل يحتاج إنترنت.";
+      show("bootView");
+    }
+    else { showLogin(!serverHash); }
+  }, ()=>{ $("bootView").textContent="خطأ بالاتصال بالسيرفر (تحقق من القواعد)."; });
+});
+
+function showLogin(isFirst){
+  firstSetup = isFirst;
+  $("pw2wrap").classList.toggle("hidden",!isFirst);
+  $("loginHint").textContent = isFirst ? "أول تشغيل: عيّن كلمة سر للتطبيق" : "أدخل كلمة السر";
+  $("loginBtn").textContent = isFirst ? "حفظ ودخول" : "دخول";
+  $("loginErr").textContent="";
+  show("loginView");
+  setTimeout(()=>$("pw1").focus(),50);
+}
+
+$("loginBtn").onclick = async ()=>{
+  const p1=$("pw1").value, p2=$("pw2").value;
+  $("loginErr").textContent="";
+  if(p1.length<4){ $("loginErr").textContent="كلمة السر لازم تكون 4 أحرف أو أكثر"; return; }
+  const h = await sha256(p1);
+  if(firstSetup){
+    if(p1!==p2){ $("loginErr").textContent="كلمتا السر غير متطابقتين"; return; }
+    await setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
+  } else if(h!==serverHash){
+    $("loginErr").textContent="كلمة السر غلط"; return;
+  }
+  localStorage.setItem(LS_KEY,h);
+  $("pw1").value=$("pw2").value="";
+  enterApp();
+};
+$("pw1").addEventListener("keydown",e=>{
+  if(e.key!=="Enter") return;
+  if(firstSetup) $("pw2").focus(); else $("loginBtn").click();
+});
+$("pw2").addEventListener("keydown",e=>{ if(e.key==="Enter") $("loginBtn").click(); });
+
+$("changePwBtn").onclick = async ()=>{
+  const err=$("pwErr"); err.textContent="";
+  if(await sha256($("curPw").value)!==serverHash){ err.textContent="كلمة السر الحالية غلط"; return; }
+  const n1=$("newPw1").value, n2=$("newPw2").value;
+  if(n1.length<4){ err.textContent="الجديدة لازم تكون 4 أحرف أو أكثر"; return; }
+  if(n1!==n2){ err.textContent="الجديدتان غير متطابقتين"; return; }
+  const h=await sha256(n1);
+  localStorage.setItem(LS_KEY,h);
+  await setDoc(settingsRef,{passHash:h, updatedAt:serverTimestamp()},{merge:true});
+  $("curPw").value=$("newPw1").value=$("newPw2").value="";
+  toast("تم تغيير كلمة السر");
+};
+$("logoutBtn").onclick = ()=>{
+  if(!confirm("تسجيل خروج من هذا الجهاز؟")) return;
+  localStorage.removeItem(LS_KEY);
+  showLogin(false);
+};
+
+/* ---------- دخول التطبيق ---------- */
+function enterApp(){
+  show("appView"); updateNet();
+  if(listenersOn) return;
+  listenersOn = true;
+  onSnapshot(collection(db,"trades"), s=>{
+    trades = s.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+    renderWorkers(); refreshOpenTradesModal();
+  });
+  onSnapshot(collection(db,"workers"), s=>{
+    workers = s.docs.map(d=>({id:d.id,...d.data()}));
+    renderWorkers(); refreshOpenTradesModal();
+  });
+}
+
+/* ---------- التبويبات ---------- */
+const TITLES={attend:"الدوام اليومي",workers:"العمال",reports:"الكشوفات",settings:"الإعدادات"};
+document.querySelectorAll("nav.tabs button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.toggle("on",x===b));
+    Object.keys(TITLES).forEach(k=>$("tab-"+k).classList.toggle("hidden",k!==b.dataset.tab));
+    $("title").textContent=TITLES[b.dataset.tab];
+  };
+});
+
+/* ---------- عرض العمال ---------- */
+$("search").addEventListener("input",renderWorkers);
+
+function tradeName(id){ return trades.find(t=>t.id===id)?.name || "بدون مهنة"; }
+
+function renderWorkers(){
+  const q = norm($("search").value);
+  const match = w => !q || (w.name||"").includes(q);
+  const active = workers.filter(w=>w.active!==false);
+  const stopped = workers.filter(w=>w.active===false);
+
+  $("workersSummary").textContent =
+    `${active.length} عامل فعّال` + (stopped.length?` · ${stopped.length} متوقف`:"") + ` · ${trades.length} مهنة`;
+
+  // تجميع حسب المهنة بترتيب المهن، والعمال بدون مهنة آخر شي
+  const order=[...trades.map(t=>t.id),"__none"];
+  const groups={};
+  active.filter(match).forEach(w=>{
+    const k = trades.some(t=>t.id===w.tradeId) ? w.tradeId : "__none";
+    (groups[k] ||= []).push(w);
+  });
+
+  let html="";
+  order.forEach(k=>{
+    const list=groups[k]; if(!list) return;
+    list.sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+    html+=`<div class="group"><div class="group-h"><span>${esc(k==="__none"?"بدون مهنة":tradeName(k))}</span><span class="count">${list.length}</span></div><div class="list">`;
+    list.forEach((w,i)=>{ html+=`<div class="item" data-id="${w.id}"><span><span class="num">${i+1}</span>${esc(w.name)}</span><span class="muted">›</span></div>`; });
+    html+=`</div></div>`;
+  });
+  if(!html){
+    html = workers.length||q
+      ? `<div class="empty">لا توجد نتائج</div>`
+      : trades.length
+        ? `<div class="empty">لا يوجد عمال بعد.<br>اضغط <b>+ عامل</b> للإضافة.</div>`
+        : `<div class="empty">ابدأ بإضافة المهن من زر <b>المهن</b>،<br>وبعدها أضف العمال.</div>`;
+  }
+  $("workersList").innerHTML=html;
+
+  const st = stopped.filter(match).sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+  $("stoppedBox").classList.toggle("hidden",!st.length);
+  $("stoppedTitle").textContent=`العمال المتوقفين (${st.length})`;
+  $("stoppedList").innerHTML = st.length ? `<div class="list" style="border-top:1px solid var(--line);border-radius:10px">`+
+    st.map(w=>`<div class="item stopped" data-id="${w.id}"><span>${esc(w.name)} <span class="muted">— ${esc(tradeName(w.tradeId))}</span></span><span class="tag">متوقف</span></div>`).join("")+`</div>` : "";
+
+  document.querySelectorAll("#workersList .item, #stoppedList .item").forEach(el=>{
+    el.onclick=()=>openWorker(workers.find(w=>w.id===el.dataset.id));
+  });
+}
+
+/* ---------- نافذة عامة ---------- */
+function openModal(html){
+  $("modalRoot").innerHTML=`<div class="modal-bg"><div class="modal">${html}</div></div>`;
+  const bg=$("modalRoot").firstChild;
+  bg.addEventListener("click",e=>{ if(e.target===bg) closeModal(); });
+  return bg.firstChild;
+}
+function closeModal(){ $("modalRoot").innerHTML=""; tradesModalOpen=false; }
+
+/* ---------- إضافة / تعديل عامل ---------- */
+$("addWorkerBtn").onclick=()=>openWorker(null);
+
+function openWorker(w){
+  if(!trades.length){ toast("أضف مهنة أولاً"); openTrades(); return; }
+  const isNew=!w;
+  const opts=trades.map(t=>`<option value="${t.id}" ${w&&w.tradeId===t.id?"selected":""}>${esc(t.name)}</option>`).join("");
+  const m=openModal(`
+    <h3>${isNew?"إضافة عامل":"تعديل عامل"}</h3>
+    <div class="field"><label>اسم العامل</label><input type="text" id="wName" value="${esc(w?.name||"")}"></div>
+    <div class="field"><label>المهنة</label><select id="wTrade">${isNew?'<option value="">— اختر —</option>':""}${opts}</select></div>
+    <div class="err" id="wErr"></div>
+    <div class="actions">
+      <button class="btn ok" id="wSave">${isNew?"إضافة":"حفظ"}</button>
+      <button class="btn sec" id="wCancel">إلغاء</button>
+    </div>
+    ${isNew?"":`<div class="actions" style="margin-top:14px">
+      ${w.active===false
+        ?`<button class="btn" id="wToggle">إرجاع العامل للعمل</button>`
+        :`<button class="btn bad" id="wToggle">إيقاف العامل</button>`}
+    </div><p class="muted">العامل المتوقف ما يطلع بالدوام اليومي، بس أيامه القديمة تبقى بالكشوفات.</p>`}
+  `);
+  setTimeout(()=>m.querySelector("#wName").focus(),50);
+  m.querySelector("#wCancel").onclick=closeModal;
+  m.querySelector("#wSave").onclick=async ()=>{
+    const name=norm(m.querySelector("#wName").value), tradeId=m.querySelector("#wTrade").value;
+    const e=m.querySelector("#wErr");
+    if(!name){ e.textContent="اكتب اسم العامل"; return; }
+    if(!tradeId){ e.textContent="اختر المهنة"; return; }
+    const dup=workers.find(x=>x.id!==w?.id && norm(x.name)===name);
+    if(dup && !confirm(`يوجد عامل بنفس الاسم (${dup.active===false?"متوقف":"فعّال"}). تريد تحفظ على كل حال؟`)) return;
+    if(isNew) addDoc(collection(db,"workers"),{name,tradeId,active:true,createdAt:serverTimestamp()});
+    else updateDoc(doc(db,"workers",w.id),{name,tradeId,updatedAt:serverTimestamp()});
+    closeModal(); toast(isNew?"تمت الإضافة":"تم الحفظ");
+  };
+  m.querySelector("#wName").addEventListener("keydown",ev=>{ if(ev.key==="Enter") m.querySelector("#wSave").click(); });
+  const tg=m.querySelector("#wToggle");
+  if(tg) tg.onclick=()=>{
+    const stop = w.active!==false;
+    if(stop && !confirm(`إيقاف ${w.name}؟`)) return;
+    updateDoc(doc(db,"workers",w.id),{active:!stop,updatedAt:serverTimestamp()});
+    closeModal(); toast(stop?"تم الإيقاف":"رجع للعمل");
+  };
+}
+
+/* ---------- المهن ---------- */
+let tradesModalOpen=false;
+$("tradesBtn").onclick=openTrades;
+
+function openTrades(){
+  tradesModalOpen=true;
+  const m=openModal(`
+    <h3>المهن</h3>
+    <div class="row" style="margin-bottom:12px">
+      <input type="text" id="tNew" class="grow" placeholder="اسم مهنة جديدة">
+      <button class="btn ok" id="tAdd">إضافة</button>
+    </div>
+    <div class="err" id="tErr"></div>
+    <div id="tList"></div>
+    <div class="actions"><button class="btn sec" id="tClose">إغلاق</button></div>
+  `);
+  m.querySelector("#tClose").onclick=closeModal;
+  const add=()=>{
+    const name=norm(m.querySelector("#tNew").value), e=m.querySelector("#tErr");
+    e.textContent="";
+    if(!name) return;
+    if(trades.some(t=>norm(t.name)===name)){ e.textContent="المهنة موجودة"; return; }
+    addDoc(collection(db,"trades"),{name,createdAt:serverTimestamp()});
+    m.querySelector("#tNew").value=""; m.querySelector("#tNew").focus();
+  };
+  m.querySelector("#tAdd").onclick=add;
+  m.querySelector("#tNew").addEventListener("keydown",ev=>{ if(ev.key==="Enter") add(); });
+  refreshOpenTradesModal();
+  setTimeout(()=>m.querySelector("#tNew").focus(),50);
+}
+
+function refreshOpenTradesModal(){
+  if(!tradesModalOpen) return;
+  const box=document.querySelector("#tList"); if(!box) return;
+  if(!trades.length){ box.innerHTML=`<div class="empty">لا توجد مهن بعد</div>`; return; }
+  box.innerHTML=`<div class="list" style="border-top:1px solid var(--line);border-radius:10px">`+
+    trades.map(t=>{
+      const n=workers.filter(w=>w.tradeId===t.id).length;
+      return `<div class="item" style="cursor:default"><span>${esc(t.name)} <span class="muted">(${n})</span></span>
+        <span class="row"><button class="btn sec sm" data-ren="${t.id}">تعديل</button>
+        ${n?"":`<button class="btn bad sm" data-del="${t.id}">حذف</button>`}</span></div>`;
+    }).join("")+`</div><p class="muted">المهنة اللي بيها عمال ما تنحذف، تقدر تعدّل اسمها بس.</p>`;
+  box.querySelectorAll("[data-ren]").forEach(b=>b.onclick=()=>{
+    const t=trades.find(x=>x.id===b.dataset.ren);
+    const nn=norm(prompt("الاسم الجديد للمهنة:",t.name)||"");
+    if(!nn||nn===t.name) return;
+    if(trades.some(x=>x.id!==t.id&&norm(x.name)===nn)){ toast("المهنة موجودة"); return; }
+    updateDoc(doc(db,"trades",t.id),{name:nn});
+  });
+  box.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    const t=trades.find(x=>x.id===b.dataset.del);
+    if(workers.some(w=>w.tradeId===t.id)){ toast("بيها عمال، ما تنحذف"); return; }
+    if(confirm(`حذف مهنة ${t.name}؟`)) deleteDoc(doc(db,"trades",t.id));
+  });
+}
+</script>
+</body>
+</html>
