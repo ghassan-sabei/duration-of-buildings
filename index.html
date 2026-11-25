@@ -172,11 +172,27 @@
 <!-- شاشة التحميل -->
 <div id="bootView" class="soon">جارِ الاتصال بالسيرفر...</div>
 
+<!-- شاشة رمز المشروع -->
+<div id="codeView" class="hidden" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="width:100%;max-width:400px;padding:22px">
+    <h2 style="text-align:center;font-size:19px">دوام عمال البنايات</h2>
+    <p class="muted" style="text-align:center;margin:0 0 14px">اكتب <b>رمز المشروع</b>. كل الأجهزة اللي تستعمل نفس الرمز تشوف نفس البيانات.</p>
+    <div class="field"><input type="text" id="codeIn" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="مثلاً satcon-towers" style="text-align:center"></div>
+    <div class="actions">
+      <button class="btn" id="codeJoin">انضمام لمشروع موجود</button>
+      <button class="btn sec" id="codeNew">إنشاء مشروع جديد</button>
+    </div>
+    <div class="err" id="codeErr"></div>
+    <p class="muted" style="font-size:13px">أول جهاز: اختار رمز واضغط <b>إنشاء مشروع جديد</b>. باقي الأجهزة: نفس الرمز و<b>انضمام</b>.</p>
+  </div>
+</div>
+
 <!-- شاشة الدخول / تعيين كلمة السر -->
 <div id="loginView" class="hidden">
   <div class="card">
     <h2>دوام عمال البنايات</h2>
     <p class="muted" id="loginHint">أدخل كلمة السر</p>
+    <p class="muted" style="text-align:center;margin-top:-10px">المشروع: <b dir="ltr" id="loginProj"></b> · <a href="#" id="loginSwitch">تغيير</a></p>
     <div class="field"><input type="password" id="pw1" placeholder="كلمة السر" autocomplete="current-password"></div>
     <div class="field hidden" id="pw2wrap"><input type="password" id="pw2" placeholder="أعد كتابة كلمة السر" autocomplete="new-password"></div>
     <button class="btn" style="width:100%" id="loginBtn">دخول</button>
@@ -290,6 +306,12 @@
         <p class="muted">بعد التغيير، كل الأجهزة الثانية تطلب كلمة السر الجديدة.</p>
       </div>
       <div class="card">
+        <h2>رمز المشروع</h2>
+        <p style="margin:0 0 8px">الرمز: <b dir="ltr" id="projCode" style="font-size:18px"></b></p>
+        <p class="muted">حتى تربط جهاز ثاني: نزّل التطبيق عليه، اكتب نفس الرمز واضغط <b>انضمام</b>، وبعدها كلمة السر.</p>
+        <button class="btn sec" id="switchProj">تغيير المشروع على هذا الجهاز</button>
+      </div>
+      <div class="card">
         <h2>اسم المشروع</h2>
         <div class="row"><input type="text" id="projName" class="grow" placeholder="مثلاً: مشروع البنايات الثلاث"><button class="btn" id="projSave">حفظ</button></div>
         <p class="muted">يطلع بأعلى كل الكشوفات المطبوعة.</p>
@@ -386,7 +408,7 @@ function toast(msg){
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function norm(s){return String(s||"").trim().replace(/\s+/g," ")}
 function show(view){
-  ["bootView","loginView","appView"].forEach(v=>$(v).classList.toggle("hidden",v!==view));
+  ["bootView","codeView","loginView","appView"].forEach(v=>$(v).classList.toggle("hidden",v!==view));
 }
 // فحص حقيقي للإنترنت: navigator.onLine يقول "متصل" حتى لو الواي فاي بدون نت
 let netOn=null, netBusy=false;
@@ -406,7 +428,12 @@ setInterval(updateNet,10000);
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) updateNet(); });
 
 /* ---------- الدخول وكلمة السر ---------- */
-const settingsRef = doc(db,"settings","app");
+// كل بيانات المشروع تحت projects/{رمز المشروع}/...
+const CODE_KEY="dob_code";
+let PROJ=localStorage.getItem(CODE_KEY)||"";
+let settingsRef=null;
+function col(name){ return collection(db,"projects",PROJ,name); }
+function dref(name,id){ return doc(db,"projects",PROJ,name,id); }
 let firstSetup = false;
 
 onAuthStateChanged(auth, async user=>{
@@ -415,6 +442,15 @@ onAuthStateChanged(auth, async user=>{
     catch(e){ $("bootView").textContent="تعذر الاتصال بالسيرفر. تأكد من الإنترنت وأعد فتح الصفحة."; }
     return;
   }
+  if(!PROJ){ showCode(); return; }
+  startProject();
+});
+
+let projStarted=false;
+function startProject(){
+  if(projStarted) return; projStarted=true;
+  settingsRef = doc(db,"projects",PROJ,"meta","settings");
+  $("projCode").textContent=PROJ; $("loginProj").textContent=PROJ;
   // راقب كلمة السر بالسيرفر: إذا تغيرت، هذا الجهاز يطلبها من جديد
   onSnapshot(settingsRef, snap=>{
     serverHash = snap.exists() ? (snap.data().passHash||null) : null;
@@ -434,7 +470,62 @@ onAuthStateChanged(auth, async user=>{
     }
     else { showLogin(!serverHash); }
   }, ()=>{ $("bootView").textContent="خطأ بالاتصال بالسيرفر (تحقق من القواعد)."; });
-});
+}
+
+/* ---------- رمز المشروع (ربط الأجهزة) ---------- */
+function showCode(){ $("codeErr").textContent=""; show("codeView"); }
+function withNet(pr){ return Promise.race([pr,new Promise((_,j)=>setTimeout(()=>j(new Error("timeout")),20000))]); }
+function codeVal(){
+  const v=$("codeIn").value.trim().toLowerCase();
+  if(!/^[a-z0-9-]{4,30}$/.test(v)){ $("codeErr").textContent="الرمز: 4 أحرف إنكليزية أو أرقام على الأقل، ويُسمح بالشرطة (-)، بدون فراغات"; return null; }
+  return v;
+}
+function projectExists(code){ return withNet(FB.getDocsFromServer(FB.query(collection(db,"projects",code,"meta"),FB.limit(1)))).then(q=>!q.empty); }
+function codeBusy(on){ $("codeJoin").disabled=$("codeNew").disabled=on; }
+function useCode(code){ localStorage.setItem(CODE_KEY,code); PROJ=code; show("bootView"); startProject(); }
+
+$("codeJoin").onclick=async ()=>{
+  const code=codeVal(); if(!code) return;
+  $("codeErr").textContent=""; codeBusy(true);
+  try{
+    if(!await projectExists(code)){ $("codeErr").textContent="ماكو مشروع بهذا الرمز. تأكد منه، أو اضغط إنشاء مشروع جديد."; return; }
+    useCode(code);
+  }catch(e){ $("codeErr").textContent="يحتاج إنترنت حتى يتأكد من الرمز"; }
+  finally{ codeBusy(false); }
+};
+$("codeNew").onclick=async ()=>{
+  const code=codeVal(); if(!code) return;
+  $("codeErr").textContent=""; codeBusy(true);
+  try{
+    if(await projectExists(code)){ $("codeErr").textContent="هذا الرمز مستعمل لمشروع ثاني. للدخول عليه اضغط انضمام، أو اختر رمز جديد."; return; }
+    // البيانات القديمة (قبل نظام الرمز) تنتقل للمشروع الجديد
+    const old=await withNet(FB.getDocsFromServer(FB.query(collection(db,"settings"),FB.limit(1))));
+    const oldSet=old.docs.find(d=>d.id==="app");
+    if(oldSet && !oldSet.data().migratedTo && confirm("توجد بيانات مسجلة من قبل (العمال والدوام والمقاولين). تريد تنقلها لهذا المشروع؟")){
+      $("codeErr").textContent="جارِ نقل البيانات...";
+      await migrateLegacy(code,oldSet.data());
+    }
+    useCode(code);
+  }catch(e){ $("codeErr").textContent="يحتاج إنترنت حتى ينشئ المشروع"; }
+  finally{ codeBusy(false); }
+};
+$("codeIn").addEventListener("keydown",e=>{ if(e.key==="Enter") $("codeJoin").click(); });
+
+async function migrateLegacy(code,settingsData){
+  const ops=[];
+  for(const name of ["trades","workers","contractors","days","cdays"]){
+    const q=await withNet(FB.getDocsFromServer(collection(db,name)));
+    q.docs.forEach(d=>ops.push([doc(db,"projects",code,name,d.id),d.data()]));
+  }
+  const sd={...settingsData}; delete sd.migratedTo;
+  ops.push([doc(db,"projects",code,"meta","settings"),sd]);
+  for(let i=0;i<ops.length;i+=400){
+    const b=FB.writeBatch(db);
+    ops.slice(i,i+400).forEach(([r,d])=>b.set(r,d));
+    await withNet(b.commit());
+  }
+  const b=FB.writeBatch(db); b.set(doc(db,"settings","app"),{migratedTo:code},{merge:true}); await withNet(b.commit());
+}
 
 function showLogin(isFirst){
   firstSetup = isFirst;
@@ -479,6 +570,11 @@ $("changePwBtn").onclick = async ()=>{
   $("curPw").value=$("newPw1").value=$("newPw2").value="";
   toast("تم تغيير كلمة السر");
 };
+$("loginSwitch").onclick = e=>{ e.preventDefault(); localStorage.removeItem(CODE_KEY); localStorage.removeItem(LS_KEY); location.reload(); };
+$("switchProj").onclick = ()=>{
+  if(!confirm("الخروج من هذا المشروع على هذا الجهاز؟ البيانات تبقى بالسيرفر، وترجع لها بنفس الرمز وكلمة السر.")) return;
+  localStorage.removeItem(CODE_KEY); localStorage.removeItem(LS_KEY); location.reload();
+};
 $("logoutBtn").onclick = ()=>{
   if(!confirm("تسجيل خروج من هذا الجهاز؟")) return;
   localStorage.removeItem(LS_KEY);
@@ -490,16 +586,16 @@ function enterApp(){
   show("appView"); updateNet();
   if(listenersOn) return;
   listenersOn = true;
-  onSnapshot(collection(db,"trades"), s=>{
+  onSnapshot(col("trades"), s=>{
     trades = s.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
     renderWorkers(); refreshOpenTradesModal(); renderAttend(); renderReport();
   });
-  onSnapshot(collection(db,"workers"), s=>{
+  onSnapshot(col("workers"), s=>{
     workers = s.docs.map(d=>({id:d.id,...d.data()}));
     renderWorkers(); refreshOpenTradesModal(); renderAttend(); fillWorkerSelect(); renderReport();
   });
-  onSnapshot(collection(db,"contractors"), s=>{
+  onSnapshot(col("contractors"), s=>{
     contractors = s.docs.map(d=>({id:d.id,...d.data()}));
     renderContr(); refreshContrModal(); fillContrSelect(); renderReport();
   });
@@ -592,7 +688,7 @@ function openDay(ds){
   $("dLabel").textContent=$("cLabel").textContent=DAYS[d.getDay()]+(ds===todayStr()?" — اليوم":"");
   if(cdayUnsub) cdayUnsub();
   cdayData={rows:{}}; renderContr();
-  cdayUnsub=onSnapshot(doc(db,"cdays",ds), snap=>{
+  cdayUnsub=onSnapshot(dref("cdays",ds), snap=>{
     if(ds!==curDate) return;
     cdayData = snap.exists()? snap.data() : {rows:{}};
     cdayData.rows ||= {};
@@ -600,7 +696,7 @@ function openDay(ds){
   });
   if(dayUnsub) dayUnsub();
   dayData={entries:{}}; renderAttend();
-  dayUnsub=onSnapshot(doc(db,"days",ds), snap=>{
+  dayUnsub=onSnapshot(dref("days",ds), snap=>{
     if(ds!==curDate) return;
     dayData = snap.exists()? snap.data() : {entries:{}};
     dayData.entries ||= {};
@@ -618,14 +714,14 @@ function saveDefs(){
   const def={in:$("defIn").value, out:$("defOut").value, b:$("defB").value};
   localStorage.setItem("dob_defs",JSON.stringify(def));
   if(!canEdit()){ renderAttend(); return; }
-  setDoc(doc(db,"days",curDate),{def,date:curDate},{merge:true});
+  setDoc(dref("days",curDate),{def,date:curDate},{merge:true});
 }
 ["defIn","defOut","defB"].forEach(id=>$(id).addEventListener("change",saveDefs));
 
 function setEntry(wid,val){ // val=null يعني غائب
   if(!canEdit()){ toast("اليوم مقفول"); return; }
   dayData.entries[wid]=val; renderAttend();
-  setDoc(doc(db,"days",curDate),{entries:{[wid]:val}, date:curDate},{merge:true});
+  setDoc(dref("days",curDate),{entries:{[wid]:val}, date:curDate},{merge:true});
 }
 function present(e){ return e && e.in; }
 
@@ -697,7 +793,7 @@ $("allPresent").onclick=()=>{
   if(!confirm(`تأشير ${todo.length} عامل حاضر بوقت ${fmtT(D.in)} – ${fmtT(D.out)}؟`)) return;
   const upd={}; todo.forEach(w=>{ upd[w.id]={in:D.in,out:D.out,b:D.b}; dayData.entries[w.id]=upd[w.id]; });
   renderAttend();
-  setDoc(doc(db,"days",curDate),{entries:upd,date:curDate},{merge:true});
+  setDoc(dref("days",curDate),{entries:upd,date:curDate},{merge:true});
 };
 $("applyDefs").onclick=()=>{
   if(!canEdit()) return;
@@ -707,7 +803,7 @@ $("applyDefs").onclick=()=>{
   if(!confirm(`تغيير وقت ${ids.length} عامل حاضر إلى ${fmtT(D.in)} – ${fmtT(D.out)}؟\n(البناية ما تتغير)`)) return;
   const upd={}; ids.forEach(id=>{ upd[id]={...E[id],in:D.in,out:D.out}; dayData.entries[id]=upd[id]; });
   renderAttend();
-  setDoc(doc(db,"days",curDate),{entries:upd},{merge:true});
+  setDoc(dref("days",curDate),{entries:upd},{merge:true});
 };
 
 function openEntry(wid){
@@ -766,7 +862,7 @@ function askPassword(title){
 function lockDay(){
   if(!confirm("قفل هذا اليوم؟ بعد القفل يصير للعرض والطباعة بس.")) return;
   dayData.locked=true; setOverride(curDate,0); renderAttend(); renderContr();
-  setDoc(doc(db,"days",curDate),{locked:true,date:curDate},{merge:true});
+  setDoc(dref("days",curDate),{locked:true,date:curDate},{merge:true});
 }
 async function unlockDay(){
   if(!await askPassword("فتح اليوم لمدة 10 دقايق")) return;
@@ -822,7 +918,7 @@ function renderContr(){
 function setCRow(id,val){
   if(!canEdit()){ toast("اليوم مقفول"); return; }
   cdayData.rows[id]=val; renderContr();
-  setDoc(doc(db,"cdays",curDate),{rows:{[id]:val},date:curDate},{merge:true});
+  setDoc(dref("cdays",curDate),{rows:{[id]:val},date:curDate},{merge:true});
 }
 
 function openCRow(cid,row){
@@ -882,7 +978,7 @@ function openContrModal(){
     const name=norm(m.querySelector("#coNew").value), e=m.querySelector("#coErr"); e.textContent="";
     if(!name) return;
     if(contractors.some(c=>norm(c.name)===name)){ e.textContent="المقاول موجود"; return; }
-    addDoc(collection(db,"contractors"),{name,active:true,createdAt:serverTimestamp()});
+    addDoc(col("contractors"),{name,active:true,createdAt:serverTimestamp()});
     m.querySelector("#coNew").value=""; m.querySelector("#coNew").focus();
   };
   m.querySelector("#coAdd").onclick=add;
@@ -904,12 +1000,12 @@ function refreshContrModal(){
     const c=contractors.find(x=>x.id===b.dataset.ren);
     const nn=norm(prompt("الاسم الجديد:",c.name)||""); if(!nn||nn===c.name) return;
     if(contractors.some(x=>x.id!==c.id&&norm(x.name)===nn)){ toast("الاسم موجود"); return; }
-    updateDoc(doc(db,"contractors",c.id),{name:nn});
+    updateDoc(dref("contractors",c.id),{name:nn});
   });
   box.querySelectorAll("[data-tg]").forEach(b=>b.onclick=()=>{
     const c=contractors.find(x=>x.id===b.dataset.tg), stop=c.active!==false;
     if(stop&&!confirm(`إيقاف ${c.name}؟`)) return;
-    updateDoc(doc(db,"contractors",c.id),{active:!stop});
+    updateDoc(dref("contractors",c.id),{active:!stop});
   });
 }
 function fillContrSelect(){
@@ -950,12 +1046,12 @@ function rSubscribe(){
   $("printArea").innerHTML=`<div class="empty">جارِ التحميل...</div>`;
   if(P.single){
     if(!P.date) return;
-    rUnsub=onSnapshot(doc(db,P.col,P.date),snap=>{ rDays={}; if(snap.exists()) rDays[P.date]=snap.data(); renderReport(); });
+    rUnsub=onSnapshot(dref(P.col,P.date),snap=>{ rDays={}; if(snap.exists()) rDays[P.date]=snap.data(); renderReport(); });
   } else {
     if(!P.ym){ $("printArea").innerHTML=`<div class="empty">اختر من تاريخ وإلى تاريخ</div>`; return; }
     const [f,t]=P.ym.split("|");
     if(f>t){ $("printArea").innerHTML=`<div class="empty">"من تاريخ" لازم يكون قبل "إلى تاريخ"</div>`; rKey=""; return; }
-    const q=FB.query(collection(db,P.col),FB.where("date",">=",f),FB.where("date","<=",t));
+    const q=FB.query(col(P.col),FB.where("date",">=",f),FB.where("date","<=",t));
     rUnsub=onSnapshot(q,snap=>{ rDays={}; snap.docs.forEach(d=>rDays[d.id]=d.data()); renderReport(); });
   }
 }
@@ -1358,8 +1454,8 @@ function openWorker(w){
     if(!tradeId){ e.textContent="اختر المهنة"; return; }
     const dup=workers.find(x=>x.id!==w?.id && norm(x.name)===name);
     if(dup && !confirm(`يوجد عامل بنفس الاسم (${dup.active===false?"متوقف":"فعّال"}). تريد تحفظ على كل حال؟`)) return;
-    if(isNew) addDoc(collection(db,"workers"),{name,tradeId,active:true,createdAt:serverTimestamp()});
-    else updateDoc(doc(db,"workers",w.id),{name,tradeId,updatedAt:serverTimestamp()});
+    if(isNew) addDoc(col("workers"),{name,tradeId,active:true,createdAt:serverTimestamp()});
+    else updateDoc(dref("workers",w.id),{name,tradeId,updatedAt:serverTimestamp()});
     closeModal(); toast(isNew?"تمت الإضافة":"تم الحفظ");
   };
   m.querySelector("#wName").addEventListener("keydown",ev=>{ if(ev.key==="Enter") m.querySelector("#wSave").click(); });
@@ -1367,7 +1463,7 @@ function openWorker(w){
   if(tg) tg.onclick=()=>{
     const stop = w.active!==false;
     if(stop && !confirm(`إيقاف ${w.name}؟`)) return;
-    updateDoc(doc(db,"workers",w.id),{active:!stop,updatedAt:serverTimestamp()});
+    updateDoc(dref("workers",w.id),{active:!stop,updatedAt:serverTimestamp()});
     closeModal(); toast(stop?"تم الإيقاف":"رجع للعمل");
   };
 }
@@ -1394,7 +1490,7 @@ function openTrades(){
     e.textContent="";
     if(!name) return;
     if(trades.some(t=>norm(t.name)===name)){ e.textContent="المهنة موجودة"; return; }
-    addDoc(collection(db,"trades"),{name,createdAt:serverTimestamp()});
+    addDoc(col("trades"),{name,createdAt:serverTimestamp()});
     m.querySelector("#tNew").value=""; m.querySelector("#tNew").focus();
   };
   m.querySelector("#tAdd").onclick=add;
@@ -1419,12 +1515,12 @@ function refreshOpenTradesModal(){
     const nn=norm(prompt("الاسم الجديد للمهنة:",t.name)||"");
     if(!nn||nn===t.name) return;
     if(trades.some(x=>x.id!==t.id&&norm(x.name)===nn)){ toast("المهنة موجودة"); return; }
-    updateDoc(doc(db,"trades",t.id),{name:nn});
+    updateDoc(dref("trades",t.id),{name:nn});
   });
   box.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
     const t=trades.find(x=>x.id===b.dataset.del);
     if(workers.some(w=>w.tradeId===t.id)){ toast("بيها عمال، ما تنحذف"); return; }
-    if(confirm(`حذف مهنة ${t.name}؟`)) deleteDoc(doc(db,"trades",t.id));
+    if(confirm(`حذف مهنة ${t.name}؟`)) deleteDoc(dref("trades",t.id));
   });
 }
 </script>
