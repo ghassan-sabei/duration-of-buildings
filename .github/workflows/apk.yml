@@ -27,6 +27,8 @@ jobs:
           A=android/app/src/main
           rm -rf $A/assets $A/res/mipmap-*
           mkdir -p $A/assets/web $A/assets/lib
+          curl -fsSL -o $A/assets/lib/html2canvas.min.js https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
+          curl -fsSL -o $A/assets/lib/jspdf.umd.min.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
           cp index.html manifest.json fb.js icon-192.png icon-512.png $A/assets/web/
           cp -r android/icons/* $A/res/
           gradle -p android clean assembleRelease --no-daemon 2>&1 | tee build.log

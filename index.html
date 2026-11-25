@@ -140,6 +140,14 @@
     .rep table{font-size:11px}
     .rep tr{page-break-inside:avoid}
   }
+  #pv{position:fixed;inset:0;z-index:40;background:#525659;display:flex;flex-direction:column}
+  #pv .bar{display:flex;gap:6px;align-items:center;padding:8px;background:#2b2e31;color:#fff}
+  #pv .bar .btn{padding:8px 12px}
+  #pv .bar .z{min-width:52px;text-align:center;font-size:14px}
+  #pv .pages{flex:1;overflow:auto;padding:12px;touch-action:pan-x pan-y}
+  #pv .pages img{display:block;margin:0 auto 12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  #pv .pn{color:#ddd;text-align:center;font-size:12px;margin:-8px 0 12px}
+  #busy{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
   #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
     padding:9px 16px;border-radius:9px;font-size:14px;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
   #toast.show{opacity:.92}
@@ -226,7 +234,9 @@
           <div id="rWorkerW" class="hidden"><label>العامل</label><select id="rWorker"></select></div>
         </div>
         <div class="actions" style="margin-top:10px">
-          <button class="btn" id="rPrint">🖨️ طباعة / PDF</button>
+          <button class="btn sec" id="rPreview">👁️ معاينة</button>
+          <button class="btn ok" id="rShare">📤 إرسال PDF</button>
+          <button class="btn" id="rPrint">🖨️ طباعة</button>
         </div>
       </div>
       <div id="printArea"></div>
@@ -718,6 +728,116 @@ function rSubscribe(){
 }
 ["rType","rDate","rFrom","rTo"].forEach(id=>$(id).addEventListener("change",rSubscribe));
 $("rWorker").addEventListener("change",renderReport);
+/* ---------- PDF + معاينة ---------- */
+const LIBS=["https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js","https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
+function loadScript(u){ return new Promise((res,rej)=>{ const sc=document.createElement("script"); sc.src=u; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); }); }
+function loadLibs(){ return (window.html2canvas&&window.jspdf)?Promise.resolve():Promise.all(LIBS.map(loadScript)); }
+function busy(on,msg){ let b=$("busy"); if(!on){ if(b) b.remove(); return; } if(!b){ b=document.createElement("div"); b.id="busy"; document.body.appendChild(b); } b.textContent=msg||"جارِ التجهيز..."; }
+function repFileName(){
+  const P=rParams(), T={daily:"daily",monthly:"workers",worker:"worker",building:"buildings"}[P.t];
+  return `attendance-${T}-${P.t==="daily"?P.date:P.ym.replace("|","_to_")}.pdf`;
+}
+const PW=794, PH=Math.round(794*297/210), PM=30; // صفحة A4 بالبكسل وهامشها
+async function buildPages(){
+  const rep=$("printArea").querySelector(".rep");
+  if(!rep) throw new Error("empty");
+  await loadLibs();
+  const box=document.createElement("div");
+  box.className="pdfbox";
+  box.style.cssText=`position:fixed;top:0;left:-20000px;width:${PW}px;padding:0 ${PM}px;background:#fff;direction:rtl;box-sizing:border-box`;
+  box.innerHTML=rep.outerHTML;
+  box.querySelectorAll("p.muted").forEach(x=>x.remove());
+  box.querySelectorAll("table").forEach(t=>t.style.fontSize="12px");
+  document.body.appendChild(box);
+  try{
+    const top=box.getBoundingClientRect().top;
+    const cuts=[...box.querySelectorAll("tr,h2,h3,.sub,.sign")].map(el=>Math.ceil(el.getBoundingClientRect().bottom-top)).sort((a,b)=>a-b);
+    const total=Math.ceil(box.scrollHeight), S=2;
+    const cv=await window.html2canvas(box,{scale:S,backgroundColor:"#fff",width:PW,height:total,windowWidth:PW});
+    const avail=PH-2*PM, pages=[];
+    let start=0;
+    while(start<total-1){
+      let end=Math.min(total,start+avail);
+      if(end<total){ const c=cuts.filter(b=>b>start+20&&b<=end); if(c.length) end=c[c.length-1]; }
+      const pg=document.createElement("canvas"); pg.width=PW*S; pg.height=PH*S;
+      const g=pg.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,pg.width,pg.height);
+      g.drawImage(cv,0,start*S,PW*S,(end-start)*S,0,PM*S,PW*S,(end-start)*S);
+      pages.push(pg); start=end;
+    }
+    // رقم الصفحة
+    if(pages.length>1) pages.forEach((pg,i)=>{ const g=pg.getContext("2d"); g.fillStyle="#555"; g.font=`${11*S}px sans-serif`; g.textAlign="center"; g.fillText(`${i+1} / ${pages.length}`,pg.width/2,pg.height-12*S); });
+    return pages;
+  } finally { box.remove(); }
+}
+function pagesToPdf(pages){
+  const pdf=new window.jspdf.jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  pages.forEach((pg,i)=>{ if(i) pdf.addPage(); pdf.addImage(pg.toDataURL("image/jpeg",0.92),"JPEG",0,0,210,297); });
+  return pdf;
+}
+async function sharePdf(pages){
+  busy(true,"جارِ تجهيز PDF...");
+  try{
+    pages = pages || await buildPages();
+    const pdf=pagesToPdf(pages), name=repFileName();
+    if(window.AndroidBridge && AndroidBridge.shareFile){
+      const r=AndroidBridge.shareFile(pdf.output("datauristring").split(",")[1],name,"application/pdf");
+      if(r) toast("ما انرسل: "+r);
+    } else {
+      const blob=pdf.output("blob"), file=new File([blob],name,{type:"application/pdf"});
+      if(navigator.canShare && navigator.canShare({files:[file]})) await navigator.share({files:[file],title:name}).catch(()=>{});
+      else { const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }
+    }
+  } catch(e){ pdfError(e); }
+  finally{ busy(false); }
+}
+function pdfError(e){
+  busy(false);
+  if(e&&e.message==="empty"){ toast("ماكو كشف"); return; }
+  toast(window.jspdf?"صار خطأ بتجهيز الملف، جرّب مرة ثانية":"أول مرة يحتاج إنترنت حتى ينزّل أدوات PDF");
+}
+window.__shareFailed=()=>toast("ما انفتحت قائمة الإرسال");
+
+async function openPreview(){
+  busy(true,"جارِ تجهيز المعاينة...");
+  let pages;
+  try{ pages=await buildPages(); } catch(e){ pdfError(e); return; }
+  busy(false);
+  const urls=pages.map(p=>p.toDataURL("image/jpeg",0.9));
+  const ov=document.createElement("div"); ov.id="pv";
+  ov.innerHTML=`<div class="bar">
+      <button class="btn sec" id="pvClose">✕</button>
+      <button class="btn sec" id="pvOut">−</button><span class="z" id="pvZ"></span><button class="btn sec" id="pvIn">+</button>
+      <span class="grow"></span>
+      <button class="btn ok" id="pvShare">📤 إرسال PDF</button>
+    </div>
+    <div class="pages" id="pvPages">${urls.map((u,i)=>`<img src="${u}">`+(urls.length>1?`<div class="pn">صفحة ${i+1} من ${urls.length}</div>`:"")).join("")}</div>`;
+  document.body.appendChild(ov);
+  const box=ov.querySelector("#pvPages");
+  const fit=()=>Math.min(1,(box.clientWidth-24)/PW);
+  let z=fit();
+  const apply=(keepCenter)=>{
+    const cx=box.scrollLeft+box.clientWidth/2, cy=box.scrollTop+box.clientHeight/2, oldW=box.scrollWidth||1, oldH=box.scrollHeight||1;
+    z=Math.max(0.2,Math.min(4,z));
+    ov.querySelectorAll("img").forEach(im=>{ im.style.width=(PW*z)+"px"; im.style.height=(PH*z)+"px"; });
+    ov.querySelector("#pvZ").textContent=Math.round(z*100)+"%";
+    if(keepCenter){ box.scrollLeft=cx*box.scrollWidth/oldW-box.clientWidth/2; box.scrollTop=cy*box.scrollHeight/oldH-box.clientHeight/2; }
+  };
+  apply(false);
+  ov.querySelector("#pvIn").onclick=()=>{ z*=1.25; apply(true); };
+  ov.querySelector("#pvOut").onclick=()=>{ z/=1.25; apply(true); };
+  ov.querySelector("#pvZ").onclick=()=>{ z=fit(); apply(true); };
+  ov.querySelector("#pvClose").onclick=()=>ov.remove();
+  ov.querySelector("#pvShare").onclick=()=>sharePdf(pages);
+  // تكبير بالإصبعين
+  let d0=0,z0=1;
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  box.addEventListener("touchstart",e=>{ if(e.touches.length===2){ d0=dist(e.touches); z0=z; } },{passive:true});
+  box.addEventListener("touchmove",e=>{ if(e.touches.length===2&&d0){ e.preventDefault(); z=z0*dist(e.touches)/d0; apply(true); } },{passive:false});
+  box.addEventListener("touchend",e=>{ if(e.touches.length<2) d0=0; });
+}
+$("rPreview").onclick=openPreview;
+$("rShare").onclick=()=>sharePdf();
+
 $("rPrint").onclick=()=>{
   const P=rParams();
   const title = P.t==="daily" ? "دوام "+P.date : "دوام "+P.ym.replace("|"," - ");
